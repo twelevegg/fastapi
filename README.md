@@ -17,12 +17,14 @@ pip install -r requirements.txt
 ### 2. 환경 변수 설정
 
 `.env` 파일을 추가해 OpenAI API Key 입력.
-
+g
 ```ini
 OPENAI_API_KEY=[your_openai_api_key_here]
 PROJECT_NAME="FastAPI AI Service"
 VERSION="1.0.0"
 API_V1_STR="/api/v1"
+QDRANT_URL = [노션에 있음]
+QDRANT_API_KEY = [노션에 있음]
 ```
 
 ### 3. 서버 실행
