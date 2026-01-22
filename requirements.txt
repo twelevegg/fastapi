@@ -6,3 +6,7 @@ websockets
 pydantic-settings
 langgraph
 langchain
+langchain-qdrant
+langchain-community
+qdrant-client
+fastembed
