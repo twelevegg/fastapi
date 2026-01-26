@@ -19,7 +19,7 @@ class OpenAIService:
     async def rpchat(
         self,
         messages: list[dict],
-        model: str,
+        model: str = "gpt-4o-mini",
         max_tokens: int = 120,
         temperature: float = 0.4,
         top_p: float = 0.9,

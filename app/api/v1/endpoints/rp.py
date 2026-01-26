@@ -11,10 +11,12 @@ async def rp_chat(req: RPChatRequest):
         message=req.message,
     )
 
+    last_msg = state["messages"][-1]
+
     return RPChatResponse(
         session_id=req.session_id,
         speaker="customer",
-        message=state["messages"][-1]["content"],
+        message=last_msg.content,
         understanding_level=state["understanding_level"],
         ready_to_close=state["ready_to_close"],
         qa_result=state["qa_result"],

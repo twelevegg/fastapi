@@ -1,10 +1,22 @@
 def build_customer_system_prompt(state):
+    memory = state.get("memory", {})
     goal = state["current_goal"]
     lvl = state["understanding_level"]
     ready = state["ready_to_close"]
 
+    explained = memory.get("explained_causes", [])
+    explained_text = ", ".join(
+        f"{c['type']}({c['category']})" for c in explained
+    )
+
     base = f"""
 당신은 통신사 고객센터에 전화 중인 고객입니다.
+
+[현재 인지 상태]
+- 설명 들은 원인: {explained_text if explained else "없음"}
+
+- 이미 납득한 부분은 반복하지 않습니다.
+- 이해되지 않은 부분만 반응합니다.
 
 [상황]
 - 이번 달 요금: 15만원
