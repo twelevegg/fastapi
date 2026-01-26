@@ -7,7 +7,9 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str
     QDRANT_URL: str
     QDRANT_API_KEY: str
-
+    QDRANT_COLLECTION_NAME: str
+    QDRANT_DENSE_EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    QDRANT_SPARSE_EMBEDDING_MODEL: str = "Qdrant/bm25"
     model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True)
 
 settings = Settings()
