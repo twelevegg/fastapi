@@ -1,4 +1,5 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
 import json
 from app.agent.marketing_bridge import process_marketing_turn
 
@@ -31,13 +32,14 @@ async def websocket_marketing(websocket: WebSocket):
                 result = await process_marketing_turn(transcript, turn_id)
                 
                 # Send Response
-                # Customize response format as needed by Frontend
                 response = {
                     "type": "marketing_result",
                     "turn_id": turn_id,
                     "data": result
                 }
-                await websocket.send_json(response)
+                # Fix: Use jsonable_encoder to handle Dataclasses (RetrievedItem) in result
+                await websocket.send_json(jsonable_encoder(response))
+                print(f"[Marketing] ✅ Sent response to client")
                 
             except Exception as e:
                 print(f"[Marketing] Error: {e}")

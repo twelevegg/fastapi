@@ -10,6 +10,6 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION_NAME: str
     QDRANT_DENSE_EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     QDRANT_SPARSE_EMBEDDING_MODEL: str = "Qdrant/bm25"
-    model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True)
+    model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
 
 settings = Settings()
