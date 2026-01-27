@@ -38,7 +38,9 @@ async def websocket_marketing(websocket: WebSocket):
                     "data": result
                 }
                 # Fix: Use jsonable_encoder to handle Dataclasses (RetrievedItem) in result
-                await websocket.send_json(jsonable_encoder(response))
+                final_response = jsonable_encoder(response)
+                print(f"[Marketing] DEBUG Payload: {json.dumps(final_response, ensure_ascii=False)[:200]}...") 
+                await websocket.send_json(final_response)
                 print(f"[Marketing] ✅ Sent response to client")
                 
             except Exception as e:
