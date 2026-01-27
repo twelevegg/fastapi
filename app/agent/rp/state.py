@@ -18,7 +18,6 @@ class RPState(TypedDict):
     current_goal: str
     understanding_level: int
     ready_to_close: bool
-    qa_result: str | None
 
     # ✅ 기억 전용 영역 (핵심)
     memory: Memory | None

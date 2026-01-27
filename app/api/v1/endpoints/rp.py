@@ -19,5 +19,4 @@ async def rp_chat(req: RPChatRequest):
         message=last_msg.content,
         understanding_level=state["understanding_level"],
         ready_to_close=state["ready_to_close"],
-        qa_result=state["qa_result"],
     )
