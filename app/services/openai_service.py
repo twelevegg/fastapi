@@ -40,7 +40,7 @@ class OpenAIService:
             raise OpenAIException(f"OpenAI API Error: {str(e)}")
 
     # Guidance용
-    async def get_guidance_model(
+    def get_guidance_model(
         self, 
         model: str = "gpt-4o-mini", 
         temperature: float = 0) -> ChatOpenAI:

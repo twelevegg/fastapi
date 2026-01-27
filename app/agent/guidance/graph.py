@@ -1,4 +1,5 @@
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 from app.agent.guidance.state import AgentState
 from app.agent.guidance.nodes import analyze_messages_node, retrieval_node, generate_node
 
@@ -34,4 +35,4 @@ def build_graph():
     workflow.add_edge("retrieve", "generate")
     workflow.add_edge("generate", END)
 
-    return workflow.compile()
+    return workflow.compile(checkpointer=MemorySaver())

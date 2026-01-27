@@ -1,6 +1,7 @@
 from typing_extensions import TypedDict
 from typing import Annotated, Optional, List, Literal
-from langchain_core.messages import BaseMessage, add_messages
+from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
 
 class AgentState(TypedDict):
   message: Annotated[List[BaseMessage], add_messages] # 상담 텍스트

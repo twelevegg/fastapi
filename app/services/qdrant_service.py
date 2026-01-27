@@ -6,14 +6,14 @@ from langchain_qdrant import FastEmbedSparse
 from app.core.config import settings
 
 # Qdrant 연결
-if not settings.Qdrant_API_KEY or not settings.Qdrant_URL:
+if not settings.QDRANT_API_KEY or not settings.QDRANT_URL:
     print("Error: QDRANT_API_KEY 혹은 QDRANT_URL가 설정되지 않았습니다.")
     _qdrant_client = None
 else:
     print("Qdrant 연결 성공")
     _qdrant_client = QdrantClient(
-        url=settings.Qdrant_URL,
-        api_key=settings.Qdrant_API_KEY
+        url=settings.QDRANT_URL,
+        api_key=settings.QDRANT_API_KEY
     )
 
 # 임베딩 모델 준비
@@ -21,11 +21,11 @@ _dense_embeddings = None
 _sparse_embeddings = None
 if _qdrant_client:
     print("임베딩 모델을 로드 중입니다...")
-    dense_embeddings = FastEmbedEmbeddings(
+    _dense_embeddings = FastEmbedEmbeddings(
         model_name=settings.QDRANT_DENSE_EMBEDDING_MODEL,
         normalize=True
     )
-    sparse_embeddings = FastEmbedSparse(
+    _sparse_embeddings = FastEmbedSparse(
         model_name=settings.QDRANT_SPARSE_EMBEDDING_MODEL,
         sparse=True
     )
