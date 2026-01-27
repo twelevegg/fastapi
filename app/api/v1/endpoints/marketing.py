@@ -1,7 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 import json
-from app.agent.marketing_bridge import process_marketing_turn
+from app.agent.marketing.bridge import process_marketing_turn
 
 router = APIRouter()
 
