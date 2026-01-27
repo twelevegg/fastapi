@@ -21,13 +21,13 @@ async def analyze_messages_node(state: AgentState):
   # `BaseMessage` 객체에서 메시지 내용을 `.content`로 접근합니다.
   if len(last_messages[-1].content) < 2:
     print(f"skip, 분석 불필요 ==========")
-    return {**state, "next_step": "skip", "resoning": "분석 불필요", "search_filter": []}
+    return {**state, "next_step": "skip", "reasoning": "분석 불필요", "search_filter": []}
 
   # `BaseMessage` 객체에서 화자 정보를 `.name`으로 접근합니다.
   # `merge_transcripts`에서 AIMessage에 `name='counselor'`를 부여했으므로 이를 활용합니다.
   if isinstance(last_messages[-1], AIMessage) and last_messages[-1].name == "counselor":
     print(f"skip, 상담사가 말함 ==========")
-    return {**state, "next_step": "skip", "resoning": "상담사가 말함", "search_filter": []}
+    return {**state, "next_step": "skip", "reasoning": "상담사가 말함", "search_filter": []}
 
   # LLM에게 RAG 필요 여부 확인
   prompt = ChatPromptTemplate.from_messages([
@@ -49,7 +49,7 @@ async def analyze_messages_node(state: AgentState):
   except Exception as e:
     print(f"Error during analysis: {e}")
     print(f"skip, 에러 발생 스킵 ==========")
-    return {**state, "next_step": "skip", "resoning": "에러 발생 스킵", "search_filter": []}
+    return {**state, "next_step": "skip", "reasoning": "에러 발생 스킵", "search_filter": []}
 
 
 

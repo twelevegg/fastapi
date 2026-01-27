@@ -1,5 +1,8 @@
 # FastAPI AI Service
 
+## Requirements
+- Python 3.13+
+
 ## 실행 방법
 
 ### 1. 환경 설정 및 의존성 설치
