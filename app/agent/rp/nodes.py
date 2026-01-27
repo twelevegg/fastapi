@@ -52,7 +52,6 @@ def normalize_messages(messages):
 def init_state_node(state: State):
     return {
         "messages": state.get("messages", []),
-        "summary": None,
         "current_goal": "요금이 왜 이렇게 많이 나왔는지 이유를 알고 싶다",
         "understanding_level": 0,
         "ready_to_close": False,
@@ -74,12 +73,6 @@ def build_llm_messages(state: State, max_turns: int = 6):
     - 최근 N턴만 컨텍스트로 사용
     """
     messages = []
-
-    if state.get("summary"):
-        messages.append({
-            "role": "system",
-            "content": f"지금까지 상담 요약:\n{state['summary']}"
-        })
 
     messages.append(build_customer_system_prompt(state))
     messages.extend(state["messages"][-max_turns:])
@@ -146,40 +139,6 @@ async def close_talk_node(state: State):
             "content": text
         }]
     }
-
-
-# ===============================
-# 요약 노드
-# ===============================
-async def summarize_node(state: State):
-    convo = ""
-    for m in state["messages"]:
-        role = "상담사" if m.type == "human" else "고객"
-        convo += f"{role}: {m.content}\n"
-
-    prompt = f"""
-다음 상담 대화를 요약하세요.
-
-- 고객이 이해한 핵심 내용
-- 여전히 남아있는 오해 또는 질문
-- 상담 흐름상 도달한 결론
-
-[대화]
-{convo}
-"""
-
-    text = await openai_service.rpchat(
-        messages=[{"role": "system", "content": prompt}],
-        model="gpt-4o-mini",
-        max_tokens=200,
-    )
-
-    state["summary"] = text
-
-    # ❗ 과거 대화는 제거 (요약만 기억)
-    state["messages"] = []
-
-    return state
 
 
 # ===============================
@@ -324,7 +283,3 @@ def memory_apply_node(state: State):
 # ===============================
 def decide_mode(state: State) -> Literal["talk", "close"]:
     return "close" if state["ready_to_close"] else "talk"
-
-
-def should_summarize(state: State) -> Literal["summarize", "skip"]:
-    return "summarize" if len(state["messages"]) >= 8 else "skip"

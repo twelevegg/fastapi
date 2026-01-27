@@ -15,7 +15,6 @@ class RPState(TypedDict):
     messages: Annotated[list, add_messages]
 
     # 시스템 상태
-    summary: str | None
     current_goal: str
     understanding_level: int
     ready_to_close: bool
