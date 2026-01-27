@@ -5,11 +5,12 @@ import json
 import uuid
 
 from app.services.guidance_service import handle_guidance_message
+from app.services.marketing_service import handle_marketing_message
 from app.services.agent_manager import agent_manager
 
 # 에이전트 등록 (서버 시작 시 또는 모듈 로드 시)
 agent_manager.register_agent(handle_guidance_message)
-# agent_manager.register_agent(handle_marketing_message) # 여기에 마케팅 에이전트 돌리는 함수 등록하면 됩니다.
+agent_manager.register_agent(handle_marketing_message) # Marketing Agent 등록 완료
 
 
 router = APIRouter()
