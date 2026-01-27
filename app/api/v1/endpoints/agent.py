@@ -18,9 +18,8 @@ router = APIRouter()
 @router.websocket("/check")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    
-    # 기본 세션 ID 생성 (연결 시)
     current_session_id = str(uuid.uuid4())
+    print(f"[AgentManager] Client Connected: {current_session_id}")
     
     # 고객 정보 (예시) - 실제로는 DB에서 조회 - 지금은 Mock데이터임
     customer_info = {"name": "김고객", "rate_plan": "5G 프리미어", "joined_date": "2023-05-20"}

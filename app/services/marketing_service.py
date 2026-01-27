@@ -5,6 +5,11 @@ import asyncio
 from typing import Dict, Any, Optional
 
 from app.agent.marketing.session import build_session, MarketingSession
+from app.agent.marketing.graph import build_marketing_graph
+from langchain_core.messages import HumanMessage, AIMessage
+
+# Initialize Graph Once (Global)
+marketing_graph = build_marketing_graph()
 
 # Global session storage for the service
 # Map: session_id -> MarketingSession
@@ -48,13 +53,6 @@ async def handle_marketing_message(turn: dict, session_id: str, customer_info: d
             "agent_type": "marketing"
         }
         
-from app.agent.marketing.graph import build_marketing_graph
-from langchain_core.messages import HumanMessage, AIMessage
-
-# Initialize Graph Once
-marketing_graph = build_marketing_graph()
-
-# ... (inside handle_marketing_message) ...
     # If customer turn, add and step
     if speaker == "customer":
         # Synchronize session history (Legacy support for session.turns)
@@ -68,10 +66,15 @@ marketing_graph = build_marketing_graph()
         # We need to construct the current turn message
         current_msg = HumanMessage(content=transcript)
         
-        graph_config = {"configurable": {"thread_id": session_id}}
+        graph_config = {
+            "configurable": {
+                "thread_id": session_id,
+                "session": session # Inject resource via config (non-serializable)
+            }
+        }
         initial_state = {
             "messages": [current_msg], # add_messages reducer will append this
-            "session_context": session, # Inject resource
+            # "session_context": session, # REMOVED: Passed via config
             "session_id": session_id,
             "marketing_needed": False # Default
         }

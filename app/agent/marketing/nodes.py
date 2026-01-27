@@ -5,13 +5,15 @@ from app.agent.marketing.state import MarketingState
 
 # access to session.py resources via state["session_context"]
 
-async def analyze_node(state: MarketingState):
+from langchain_core.runnables import RunnableConfig
+
+async def analyze_node(state: MarketingState, config: RunnableConfig):
     """
     1. Router / Gatekeeper Logic
     2. Intent Classification
     """
     print("--- [Marketing] Node: Analyze ---")
-    session = state["session_context"] # MarketingSession instance
+    session = config["configurable"]["session"] # MarketingSession instance
     messages = state["messages"]
     last_msg = messages[-1].content if messages else ""
     
@@ -41,14 +43,14 @@ async def analyze_node(state: MarketingState):
         "generated_reasoning": f"Intent: {route_result.get('intent')}, Sentiment: {route_result.get('sentiment')}"
     }
 
-async def retrieve_node(state: MarketingState):
+async def retrieve_node(state: MarketingState, config: RunnableConfig):
     """
     1. Build Query
     2. Search Qdrant (Terms/Guidelines)
     3. Search ProductDB
     """
     print("--- [Marketing] Node: Retrieve ---")
-    session = state["session_context"]
+    session = config["configurable"]["session"]
     messages = state["messages"]
     
     # Reuse session.build_query() logic? 
@@ -96,14 +98,14 @@ async def retrieve_node(state: MarketingState):
         "product_candidates": p_json
     }
 
-async def generate_node(state: MarketingState):
+async def generate_node(state: MarketingState, config: RunnableConfig):
     """
     1. Assemble Prompt
     2. Call Main LLM
     3. Parse Result
     """
     print("--- [Marketing] Node: Generate ---")
-    session = state["session_context"]
+    session = config["configurable"]["session"]
     
     # Check skip
     if not state.get("marketing_needed", False):

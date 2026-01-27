@@ -9,7 +9,7 @@ class MarketingState(TypedDict):
     
     # Metadata / Context
     session_id: str
-    session_context: Any # Holds the MarketingSession object (non-serializable, in-memory only)
+    # session_context removed (passed via config to avoid serialization error)
     customer_id: Optional[str]
     customer_profile: Optional[Dict[str, Any]] # Raw or Processed profile
     
