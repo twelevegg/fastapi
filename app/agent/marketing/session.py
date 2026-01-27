@@ -691,163 +691,7 @@ def quick_router(dialogue: str, customer: CustomerProfile) -> Dict[str, Any]:
     return {"call_stage_hint": stage, "marketing_needed_hint": marketing_needed, "marketing_type_hint": mtype, "reasons": reasons[:6]}
 
 
-# -------------------------
-# Prompts (high-control JSON, route-specific add-ons)
-# -------------------------
-
-BASE_SYSTEM = """\
-당신은 통신/구독형 서비스의 콜센터 상담원(Agent)을 지원하는 “CS + 마케팅(업셀/해지방어) 코파일럿”이다.
-입력:
-- CUSTOMER_PROFILE_DB: 고객 DB(정형)
-- PRODUCT_CANDIDATES: 상품 DB 후보(정형)
-- EVIDENCE_QDRANT: 원격 Qdrant에서 검색된 약관/가이드 근거
-- DIALOGUE_LAST_TURNS: 최근 대화 로그(ASR 오류/화자 혼동 가능)
-
-핵심 목표:
-1) 감정 분석(감정/의도/이탈위험)
-2) 마케팅 개입 필요/불필요 판정(필요하면 upsell/retention/hybrid)
-3) 상담원이 바로 읽을 수 있는 "다음 상담원 멘트"와 진행 플로우 생성
-4) 정책/약관 준수 및 환각 방지
-
-절대 금지:
-- EVIDENCE_QDRANT 밖의 약관/절차/위약금 수치/확정 조건을 만들지 마라.
-- PRODUCT_CANDIDATES 밖의 상품명/상품ID/혜택을 만들지 마라.
-- 고객 PII(실명/전화/주소)를 그대로 반복하지 마라.
-- "무조건 됩니다/보장" 같은 확정적 표현 금지 → "조회/조건 확인 후 안내"로 표현.
-
-출력은 오직 JSON 단일 객체. 마크다운/설명문/코드블록 금지.
-
-JSON 스키마(키 이름/구조 변경 금지):
-{
-  "call_stage": "verification|consent|problem_solving|offer_discussion|closing|unknown",
-  "marketing_needed": true,
-  "marketing_type": "none|support_only|upsell|retention|hybrid",
-  "customer_state": {
-    "sentiment": {"label": "positive|neutral|negative", "score": 0.0},
-    "emotion_tags": ["anger|anxiety|disappointment|confusion|relief|..."],
-    "primary_intent": "cancel|complaint|bundle|plan_change|price_inquiry|info_request|unknown",
-    "churn_risk": {"level": "low|medium|high", "score": 0.0},
-    "key_pain_points": ["..."]
-  },
-  "decision": {
-    "why_marketing_needed_or_not": "한 문장",
-    "branch_reason": "왜 이 분기인지(간결)",
-    "next_questions": ["..."],
-    "next_actions": [
-      {
-        "priority": 1,
-        "type": "support|retention|upsell",
-        "goal": "행동 목표",
-        "rationale": "근거/이유(간결)",
-        "agent_script": {
-          "opening": "상담원이 바로 읽을 1~2문장",
-          "empathy": "공감/안심 1문장(필요시)",
-          "probing_questions": ["최대 3개"],
-          "proposal": "제안/안내(근거 있을 때만 구체)",
-          "objection_handling": ["최대 3개"],
-          "closing": "마무리 1문장"
-        },
-        "evidence_doc_ids": ["DOC1"],
-        "product_ids": ["PROD-0001"]
-      }
-    ],
-    "micro_branches": [
-      {
-        "if_customer_says": "짧은 조건",
-        "agent_response": "짧은 응답(한두 문장)",
-        "goal": "support|retention|upsell",
-        "evidence_doc_ids": ["DOC2"],
-        "product_ids": ["PROD-0002"]
-      }
-    ]
-  },
-  "policy_answer": {
-    "answer": "약관/절차/고지 기반 답변(근거 기반)",
-    "evidence_doc_ids": ["DOC2"]
-  },
-  "product_recommendations": [
-    {
-      "product_id": "PROD-0001",
-      "name": "상품명",
-      "fit_reason": "왜 적합한가",
-      "pitch": "상담원이 말할 짧은 제안 멘트",
-      "must_check": ["가입조건/약정/대상 확인 등"],
-      "notes": "유의사항 요약(있으면)"
-    }
-  ],
-  "needs_more_info": false,
-  "missing_info": ["..."],
-  "safety_and_compliance": {
-    "do_not_claim": ["..."],
-    "checks_before_offer": ["..."],
-    "risk_flags": ["..."]
-  }
-}
-"""
-
-ADDON_VERIFICATION_CONSENT = """\
-[현재 초점: verification/consent]
-- 본인확인/동의/고지 단계에서는 마케팅 제안(업셀)을 최소화한다.
-- 고객이 먼저 결합/요금제 변경/혜택을 요구한 경우에만, "가능 여부 조회 후 안내" 수준으로 제한적 안내를 한다.
-- 동의/고지 멘트는 짧고 정확하게.
-"""
-
-ADDON_RETENTION = """\
-[현재 초점: retention(해지방어)]
-- "전문 상담원" 페르소나를 유지하라. 고객의 감정에 '공감'하되, 감정에 휩쓸리지 말고 '해결책'으로 리드하라.
-- 먼저 불편함에 대해 진정성 있게 사과/공감한다(1문장).
-- 그 후, "하지만 고객님, 지금 해지하시는 것보다 [상품명]으로 변경하시는 것이 데이터는 2배 더 많고 요금은 [절약액]원 더 저렴합니다"와 같이 구체적인 수치와 혜택으로 설득한다.
-- 제안은 2개 이하. 반드시 PRODUCT_CANDIDATES 중에서만 선택.
-"""
-
-ADDON_UPSELL = """\
-[현재 초점: upsell(업셀링)]
-- "베테랑 통신 컨설턴트"처럼 행동하라. 고객이 모르는 혜택을 찾아주는 전문가다.
-- 요금 불만에는 "저도 요금이 많이 나오면 속상합니다"라고 공감한 뒤, "그래서 제가 고객님의 사용 패턴을 분석해봤는데요, [상품명]을 쓰시면 같은 가격에 데이터는 무제한입니다"라는 식으로 '전문적인 분석' 결과를 제시하라.
-- 강매하는 느낌이 아니라, "고객님을 위해 찾아낸 최적의 솔루션"이라는 뉘앙스로 제안하라.
-- 제안은 2개 이하. 반드시 PRODUCT_CANDIDATES 중에서만 선택.
-"""
-
-ADDON_HYBRID = """\
-[현재 초점: hybrid]
-- 1) 문제/불만 해결(또는 완화) 방향을 먼저 제시하고
-- 2) 해결 이후 고객 부담을 줄이거나 만족도를 높이는 옵션(요금제/결합/혜택)을 제안한다.
-- 제안은 1개가 원칙(최대 2개).
-"""
-
-ADDON_SUPPORT_ONLY = """\
-[현재 초점: support_only]
-- 마케팅 제안 없이 문의/절차/동의/약관 안내 중심으로 진행한다.
-- missing_info/next_questions를 구체적으로 제시한다.
-"""
-
-USER_TEMPLATE = """\
-[ROUTER_HINT]
-{router_hint_json}
-
-[STATE_PREV]
-{state_prev_json}
-
-[CUSTOMER_PROFILE_DB]
-{customer_profile_json}
-
-[DERIVED_SIGNALS]
-{signals_json}
-
-[PRODUCT_CANDIDATES]
-{product_candidates_json}
-
-[DIALOGUE_LAST_TURNS]
-{dialogue_text}
-
-[EVIDENCE_QDRANT]
-{evidence_qdrant}
-
-요청:
-- ROUTER_HINT는 참고용이다. 실제 대화/근거에 따라 필요하면 수정해도 된다.
-- 반드시 JSON 스키마를 지켜라(키/구조 변경 금지).
-- 근거 없는 수치/혜택/위약금 확정 안내 금지.
-"""
+# Prompts are now imported from app.agent.marketing.prompts
 
 
 # -------------------------
@@ -1150,7 +994,12 @@ class MarketingSession:
         parts = [p for p in [self.customer.mobile_plan, self.customer.internet_plan, " ".join(kws), dialog] if p]
         return " | ".join(parts)[:1400]
 
-    def _system_prompt(self, router_hint: Dict[str, Any]) -> str:
+from app.agent.marketing.prompts import (
+    BASE_SYSTEM, ADDON_VERIFICATION_CONSENT, ADDON_RETENTION, 
+    ADDON_UPSELL, ADDON_HYBRID, ADDON_SUPPORT_ONLY, USER_TEMPLATE
+)
+
+    def build_system_prompt(self, router_hint: Dict[str, Any]) -> str:
         stage = router_hint.get("call_stage_hint", "unknown")
         mtype = router_hint.get("marketing_type_hint", "none")
         addon = ADDON_SUPPORT_ONLY
@@ -1166,210 +1015,58 @@ class MarketingSession:
             addon = ADDON_SUPPORT_ONLY
         return BASE_SYSTEM + "\n\n" + addon
 
-    async def step(self) -> Dict[str, Any]:
-        start_time = time.time()
-        dialog = self.dialogue_text()
+    async def step(self, session_id: str = "legacy_session") -> Dict[str, Any]:
+        """
+        [Refactored] Now wraps the LangGraph execution to ensure single source of truth.
+        """
+        from app.agent.marketing.graph import build_marketing_graph
+        from langchain_core.messages import HumanMessage
         
-        # [Route 1] Safety Check (Gatekeeper)
-        # Check the *latest* customer turn(s) for safety
-        last_turn = self.turns[-1].transcript if self.turns and self.turns[-1].speaker == "customer" else ""
-        safety = await self.gatekeeper.check_safety(last_turn)
-        
-        if not safety.is_safe:
-            return {
-                "call_stage": self.call_stage,
-                "marketing_needed": False,
-                "marketing_type": "none",
-                "customer_state": {},
-                "decision": {"next_actions": []},
-                "product_recommendations": [],
-                "_debug": {
-                    "gatekeeper_result": f"Blocked: {safety.reason}"
-                }
-            }
-
-        # [Route 2] Semantic Cache Check
-        # [Route 2] Semantic Cache Check
-        # cached_result = await self.cache.get(last_turn)
-        # if cached_result:
-        #     elapsed = (time.time() - start_time) * 1000
-        #     cached_result["_meta"] = {"latency_ms": elapsed, "source": "cache"}
-        #     return cached_result
-        cached_result = None # Force Miss for Testing
-
-        # [Route 3] Tier 2 Router (Fast LLM)
-        # 1. Router (Tier 2) checks (Fast LLM)
-        route_start = time.time()
-        # [Route 3] Tier 2 Router (Fast LLM)
-        # 1. Router (Tier 2) checks (Fast LLM)
-        route_start = time.time()
-        
-        # [Context] Get last agent turn
-        last_agent_turn = ""
-        if len(self.turns) >= 2 and self.turns[-2].speaker == "agent":
-            last_agent_turn = self.turns[-2].transcript
+        # We need to construct input from the last turn
+        if not self.turns:
+            return {"next_step": "skip", "marketing_needed": False}
             
-        route_result = await self.gatekeeper.semantic_route(last_turn, context=last_agent_turn) # Cached or LLM
-        print(f"[Session] Router decision: {route_result} (took {time.time()-route_start:.2f}s)")      
-        # Mapping to legacy hints for compatibility
-        router_hint = {
-            "call_stage_hint": "unknown", 
-            "marketing_needed_hint": route_result.get("marketing_opportunity", False),
-            "marketing_type_hint": "upsell" if route_result.get("marketing_opportunity") else "none",
-            "reasons": [f"Intent: {route_result.get('intent')}, Sentiment: {route_result.get('sentiment')}"]
+        last_turn = self.turns[-1]
+        if last_turn.speaker != "customer":
+            return {"next_step": "skip", "marketing_needed": False}
+        
+        # Instantiate Graph (Singleton in real app, but here local is fine for step compat)
+        # TODO: Ideally pass this in __init__
+        graph = build_marketing_graph()
+        
+        current_msg = HumanMessage(content=last_turn.transcript)
+        
+        # Prepare State
+        # Note: We must inject 'self' as session_context
+        initial_state = {
+            "messages": [current_msg],
+            "session_context": self,
+            "session_id": session_id,
+            "marketing_needed": False
         }
         
-        if not route_result.get("marketing_opportunity", False):
-             # Skip expensive LLM if Tier 2 says no opportunity
-             elapsed = (time.time() - start_time) * 1000
-             return {
-                "call_stage": self.call_stage,
-                "marketing_needed": False,
-                "marketing_type": "none",
-                "customer_state": {},
-                 "decision": {
-                     "why_marketing_needed_or_not": "Fast Router: No opportunity detected",
-                     "next_actions": []
-                 },
-                "product_recommendations": [],
-                "_meta": {"latency_ms": elapsed, "source": "tier2_router"}
+        config = {"configurable": {"thread_id": session_id}}
+        
+        try:
+            print(f"[Session] invoking Graph (legacy step wrapper)...")
+            final_state = await graph.ainvoke(initial_state, config=config)
+            
+            # Map back to legacy result format for consumer compatibility
+            return {
+                "marketing_needed": final_state.get("marketing_needed", False),
+                "marketing_type": final_state.get("marketing_type", "none"),
+                "call_stage": final_state.get("call_stage", "unknown"),
+                "decision": {
+                    "next_actions": final_state.get("next_actions", [])
+                },
+                "product_recommendations": final_state.get("product_candidates", []), # Schema match?
+                # ... Map other fields if needed ...
             }
-
-        query = self.build_query()
-
-        # Retrieval: staged with category weights; always include some terms for compliance
-        stage = router_hint.get("call_stage_hint", "unknown")
-        mtype = router_hint.get("marketing_type_hint", "none")
-
-        # [Optimization] Check Prefetch Cache
-        # If we have a fresh prefetch result (e.g. < 5 seconds old) that matches context, use it.
-        # For simplicity, we just check if it exists and use it as 'evidence' augmentation
-        
-        q_items_pre = []
-        if self._prefetch_cache:
-            age = time.time() - self._prefetch_cache["timestamp"]
-            if age < 5.0:
-                print(f"[Session] Using Prefetched data (age={age:.2f}s)")
-                q_items_pre = self._prefetch_cache["items"]
-            self._prefetch_cache = None # Consume it
-
-        if stage in ["verification", "consent"]:
-            cats = ["terms", "guideline", "principle", "marketing"]
-            weights = {"terms": 1.35, "guideline": 1.15, "principle": 1.05, "marketing": 0.9}
-            always = {"terms": 3}
-        elif mtype == "retention":
-            cats = ["marketing", "guideline", "terms", "principle"]
-            weights = {"marketing": 1.55, "guideline": 1.2, "terms": 1.05, "principle": 1.0}
-            always = {"terms": 2}
-        elif mtype == "upsell":
-            cats = ["marketing", "guideline", "principle", "terms"]
-            weights = {"marketing": 1.45, "guideline": 1.15, "principle": 1.05, "terms": 1.0}
-            always = {"terms": 1}
-        elif mtype == "hybrid":
-            cats = ["guideline", "marketing", "terms", "principle"]
-            weights = {"guideline": 1.25, "marketing": 1.25, "terms": 1.05, "principle": 1.0}
-            always = {"terms": 2}
-        else:
-            cats = ["guideline", "terms", "principle", "marketing"]
-            weights = {"guideline": 1.2, "terms": 1.1, "principle": 1.0, "marketing": 0.95}
-            always = {"terms": 2}
-
-            always = {"terms": 2}
-        
-        # Merge Pre-fetched items with current search if needed
-        # Or if pre-fetched covers the need, skip search? (Advanced)
-        # For now, we search normally but could mix in pre-fetched.
-        q_items = self.qdrant.staged_category_search(query=query, final_k=10, per_category_k=6, categories=cats, cat_weights=weights, always_include=always)
-        
-        # Add pre-fetched to the pool if unique
-        if q_items_pre:
-             # simple dedup by doc_id
-             existing_ids = {i.doc_id for i in q_items}
-             for item in q_items_pre:
-                 if item.doc_id not in existing_ids:
-                     q_items.append(item)
-                     
-        q_context, q_ev = build_context(q_items)
-
-        # Product candidates
-        must = [self.customer.mobile_plan] if self.customer.mobile_plan else []
-        strat = mtype if mtype in ["upsell", "retention", "hybrid"] else "none"
-        p_items = self.product_index.search(query=query, top_k=6, strategy_hint=strat, must_include_names=must)
-        p_json = [p.to_compact() for p in p_items]
-
-        system_prompt = self._system_prompt(router_hint)
-        user_prompt = USER_TEMPLATE.format(
-            router_hint_json=json.dumps(router_hint, ensure_ascii=False, indent=2),
-            state_prev_json=json.dumps(self.state_prev, ensure_ascii=False, indent=2),
-            customer_profile_json=json.dumps(self.customer.to_prompt_json(), ensure_ascii=False, indent=2),
-            signals_json=json.dumps(self.customer.signals, ensure_ascii=False, indent=2),
-            product_candidates_json=json.dumps(p_json, ensure_ascii=False, indent=2),
-            dialogue_text=dialog if dialog else "(대화 없음)",
-            evidence_qdrant=q_context if q_context else "(검색 결과 없음)",
-        )
-        # Use dynamic model name in logs
-        model_name = getattr(self.llm, "model", "Main LLM")
-        print(f"[Session] 🧠 Calling {model_name} (Confirmed)...")
-        llm_start = time.time()
-        result = await self.llm.chat_json(system_prompt=system_prompt, user_prompt=user_prompt, temperature=0.2, max_tokens=1400)
-        print(f"[Session] ✅ Main LLM finished in {time.time()-llm_start:.2f}s")
-
-        # post-validate doc_ids/product_ids
-        allowed_doc = {e["doc_id"] for e in q_ev}
-        allowed_prod = {p["product_id"] for p in p_json}
-
-        def clean_ids(lst, allowed):
-            if not isinstance(lst, list):
-                return []
-            return [x for x in lst if x in allowed]
-
-        dec = result.get("decision", {})
-        if isinstance(dec, dict):
-            acts = dec.get("next_actions", [])
-            if isinstance(acts, list):
-                for a in acts:
-                    if isinstance(a, dict):
-                        a["evidence_doc_ids"] = clean_ids(a.get("evidence_doc_ids", []), allowed_doc)
-                        a["product_ids"] = clean_ids(a.get("product_ids", []), allowed_prod)
-            mbs = dec.get("micro_branches", [])
-            if isinstance(mbs, list):
-                for b in mbs:
-                    if isinstance(b, dict):
-                        b["evidence_doc_ids"] = clean_ids(b.get("evidence_doc_ids", []), allowed_doc)
-                        b["product_ids"] = clean_ids(b.get("product_ids", []), allowed_prod)
-
-        pol = result.get("policy_answer", {})
-        if isinstance(pol, dict):
-            pol["evidence_doc_ids"] = clean_ids(pol.get("evidence_doc_ids", []), allowed_doc)
-
-        pr = result.get("product_recommendations", [])
-        if isinstance(pr, list):
-            result["product_recommendations"] = [r for r in pr if isinstance(r, dict) and safe_str(r.get("product_id")) in allowed_prod]
-
-        # update state
-        self.state_prev["call_stage"] = safe_str(result.get("call_stage")) or self.state_prev["call_stage"]
-        self.state_prev["marketing_needed"] = bool(result.get("marketing_needed", False))
-        self.state_prev["marketing_type"] = safe_str(result.get("marketing_type")) or self.state_prev["marketing_type"]
-
-        result["_debug"] = {
-            "router_hint": router_hint,
-            "retrieval_query_masked": mask_pii(query),
-            "qdrant_evidence": q_ev,
-            "product_candidates": p_json,
-        }
-        
-        # [Cache Set]
-        await self.cache.set(last_turn, result)
-        
-        # [Memory] Save Agent Turn
-        agent_script = self._extract_script(result)
-        if agent_script:
-            self.add_turn(speaker="agent", transcript=agent_script)
-        
-        elapsed = (time.time() - start_time) * 1000
-        result["_meta"] = {"latency_ms": elapsed, "source": "tier3_llm"}
-        
-        return result
+        except Exception as e:
+            print(f"[Session] Graph step failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"marketing_needed": False, "error": str(e)}
 
     def _extract_script(self, result: Dict[str, Any]) -> str:
         # Helper to find the script in the deep result structure

@@ -118,7 +118,7 @@ async def generate_node(state: MarketingState):
     # Let's rely on session.state_prev for now (Side effect!) or pass state.
     
     # Actually, let's use the graph state to feed the prompt
-    from app.agent.marketing.session import USER_TEMPLATE
+    from app.agent.marketing.prompts import USER_TEMPLATE
     
     # We need to mock/reconstruct the hint/json objects
     router_hint = {
@@ -132,7 +132,7 @@ async def generate_node(state: MarketingState):
     p_json = state.get("product_candidates", [])
     
     # formatting
-    system_prompt = session._system_prompt(router_hint)
+    system_prompt = session.build_system_prompt(router_hint)
     user_prompt = USER_TEMPLATE.format(
         router_hint_json=json.dumps(router_hint, ensure_ascii=False, indent=2),
         state_prev_json=json.dumps(session.state_prev, ensure_ascii=False, indent=2), # Legacy state

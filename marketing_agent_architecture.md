@@ -1,93 +1,114 @@
 # Marketing Agent Architecture & Workflow
 
 ## 🏗️ Overview
-Marketing Agent는 **LangGraph** 기반의 워크플로우를 통해 고객의 발화를 분석하고, 세일즈/마케팅 기회를 포착하여 최적의 제안을 생성합니다. 기존의 절차적 코드(`step()` 함수)를 그래프 기반으로 마이그레이션하여 **확장성**과 **모듈성**을 확보했습니다.
-
-### 🔑 Key Concepts
-- **StateGraph**: 전체 상담의 상태(`MarketingState`)를 관리하며 노드 간 데이터 전달.
-- **Session Injection**: 무거운 리소스(Qdrant Client, Product DB)를 매번 생성하지 않고, `MarketingSession` 객체를 상태에 주입하여 재사용.
-- **Hybrid Execution**: 새로운 `MarketingService`와 레거시 `Consumer` 모두 동일한 그래프 로직을 사용.
+Marketing Agent는 **LangGraph** 기반의 워크플로우를 통해 고객의 발화를 분석하고, 세일즈/마케팅 기회를 포착하여 최적의 제안을 생성합니다. 
+기존의 절차적 코드(`step()` 함수)를 그래프 기반으로 마이그레이션하여 **확장성**과 **모듈성**을 확보했습니다.
 
 ---
 
-## 🔄 Workflow Diagram
+## 📂 File Structure & Roles (파일별 역할 상세)
+
+### 1. **Framework Layer (`app/services`, `app/api`)**
+이 계층은 외부 요청을 에이전트의 내부 로직(`Graph`)으로 연결해주는 어댑터 역할을 합니다.
+
+| 파일명 | 역할 및 설명 |
+| :--- | :--- |
+| **`app/api/v1/endpoints/agent.py`** | **[통합 진입점]** 클라이언트(WebSocket)로부터 모든 요청을 받아 `AgentManager`에게 전달합니다. |
+| **`app/services/agent_manager.py`** | **[오케스트레이터]** `Guidance`와 `Marketing` 에이전트에게 동시에 작업을 시키고 결과를 취합합니다. |
+| **`app/services/marketing_service.py`** | **[어댑터]** `AgentManager`의 요청을 받아 `MarketingGraph`를 실행(`ainvoke`)하고, 결과를 표준 포맷으로 변환합니다. |
+
+### 2. **Core Logic Layer (`app/agent/marketing`)**
+실질적인 AI 로직이 구현된 핵심 계층입니다. **LangGraph** 패턴을 따릅니다.
+
+| 파일명 | 역할 및 설명 |
+| :--- | :--- |
+| **`graph.py`** | **[워크플로우 정의]** 상태(State)와 노드(Node)를 연결하여 실행 순서를 정의합니다. (`Analyze -> Retrieve -> Generate`) |
+| **`nodes.py`** | **[실행 단위]** 각 단계별 구체적인 로직을 수행합니다. (예: 의도 분류, 검색, LLM 호출) |
+| **`state.py`** | **[메모리 구조]** 그래프 실행 중에 에이전트가 공유하는 데이터 모델(`TypedDict`)입니다. |
+| **`session.py`** | **[리소스 컨테이너]** Qdrant, OpenAI, 고객 DB 등 무거운 리소스를 초기화하고 관리합니다. 그래프 노드들은 이 객체(`session_context`)를 통해 리소스에 접근합니다. |
+| **`prompts.py`** | **[프롬프트 저장소]** 상담원 페르소나, 마케팅 전략(Sales Strategy) 등 모든 시스템 프롬프트를 중앙에서 관리합니다. |
+
+### 3. **Support Components (`app/agent/marketing`)**
+핵심 로직을 보조하는 유틸리티 모듈들입니다.
+
+| 파일명 | 역할 및 설명 |
+| :--- | :--- |
+| **`router.py`** | **[Gatekeeper]** 메시지의 안전성을 검사(욕설/비속어)하고, 마케팅 기회(Upsell/Retention)가 있는지 **Semantic Routing**을 수행합니다. |
+| **`buffer.py`** | **[스트림 버퍼]** 실시간으로 들어오는 텍스트 조각(chunk)을 모아서 온전한 문장으로 만듭니다. (Legacy Consumer용) |
+| **`cache.py`** | **[캐시]** 동일한 사용자 발화에 대한 LLM 응답을 캐싱하여 속도를 높이고 비용을 절감합니다. |
+| **`consumer.py`** | **[레거시 호환]** 기존 아키텍처(WebSocket 직접 연결 등)를 지원하기 위한 구형 메시지 처리기입니다. 내부적으로 리팩토링된 `session.step()`을 호출합니다. |
+| **`bridge.py`** | **[레거시 브릿지]** `/marketing` 전용 엔드포인트 요청을 처리하는 연결 모듈입니다. |
+
+---
+
+## 🔄 Detailed Data Flow (상세 데이터 흐름)
+
+사용자가 **"요금제가 너무 비싼 것 같은데..."**라고 말했을 때 흐름입니다.
+
+### 1️⃣ 입력 단계 (Input)
+1.  **User** -> `fastapi-main/app/api/v1/endpoints/agent.py` (WebSocket)
+2.  `agent.py` -> `agent_manager.process_turn()` 호출
+3.  `agent_manager` -> `marketing_service.handle_marketing_message()` 호출
+
+### 2️⃣ 그래프 실행 단계 (Graph Execution)
+`marketing_service`는 `MarketingGraph`를 `ainvoke()`로 실행합니다.
+
+#### Step A: Analyze Node (`nodes.py`)
+1.  `MarketingSession`의 리소스를 가져옵니다.
+2.  **Gatekeeper (`router.py`)** 호출:
+    *   욕설인가? (Safety Check) -> `Passed`
+    *   마케팅 기회인가? (Semantic Route) -> `Intent: churn_risk`, `Opportunity: True`
+3.  **State Update**: `marketing_needed=True`, `marketing_type="retention"`
+
+#### Step B: Retrieve Node (`nodes.py`)
+1.  **Query Builder**: "해지 방어, 요금 불만" 관련 쿼리 생성.
+2.  **Qdrant Search (`session.py`)**: '해지 방어 가이드라인', '약정 해지 위약금 약관' 검색.
+3.  **Product Search (`session.py`)**: 현재 요금제보다 저렴하면서 혜택이 좋은 '대체 요금제' 검색.
+4.  **State Update**: `retrieved_items` 및 `product_candidates` 저장.
+
+#### Step C: Generate Node (`nodes.py`)
+1.  **Prompt Assembly**:
+    *   `prompts.py`에서 상황에 맞는 **Sales Strategy(판매 전략)** 선택.
+        *   *Retention* -> **Empathy First** (공감 우선)
+        *   *Upsell* -> **Value Architect** (가치 설계)
+    *   검색된 약관/상품 정보 (증거 자료) 및 고객 프로필 주입.
+2.  **LLM Call (`session.py -> OpenAI`)**:
+    *   "고객님, 많이 부담되셨군요. (공감) 하지만 지금 해지하시면..." (전략적 스크립트 생성)
+3.  **State Update**: `agent_script` 저장.
+
+### 3️⃣ 출력 단계 (Output)
+1.  `marketing_service`가 그래프 실행 결과(`agent_script`)를 추출.
+2.  `AgentManager`에게 결과 반환 (`formatted dict`).
+3.  `AgentManager`가 `FastAPI`를 통해 사용자에게 JSON 응답 전송.
+
+---
+
+## 🧩 Visual Architecture
 
 ```mermaid
 graph TD
-    Start([Input: Customer Turn]) --> Analyze
+    User([User]) -->|WebSocket| API[Agent Endpoint]
+    API --> Manager[Agent Manager]
     
-    subgraph "LangGraph Execution"
-        Analyze[🔍 Analyze Node] -->|Intent & Safety Check| Router{Marketing Needed?}
-        
-        Router -- No --> Skip[Skip / Default Policy]
-        Router -- Yes --> Retrieve[📚 Retrieve Node]
-        
-        Retrieve -->|Search Qdrant & Products| Generate[🧠 Generate Node]
-        
-        Generate --> End([Output: Agent Script])
-        Skip --> End
+    subgraph "Dual Agent System"
+        Manager -->|Task| Guidance[Guidance Agent]
+        Manager -->|Task| Marketing[Marketing Service]
     end
     
-    subgraph "Resources (Session Context)"
-        Analyze -.-> Gatekeeper[Gatekeeper Class]
-        Retrieve -.-> Qdrant[(Qdrant Vector DB)]
-        Retrieve -.-> ProductDB[(Product Index)]
-        Generate -.-> LLM[(OpenAI LLM)]
+    subgraph "Marketing Agent Internals"
+        Marketing -->|Invoke| Graph[LangGraph Workflow]
+        
+        Graph --> Node1[Analyze Node]
+        Node1 -->|Router| Helper1[Router.py / Gatekeeper]
+        
+        Node1 --> Node2[Retrieve Node]
+        Node2 -->|Search| Helper2[Session.py / Qdrant & DB]
+        
+        Node2 --> Node3[Generate Node]
+        Node3 -->|Inference| Helper3[Session.py / LLM]
     end
+    
+    Graph -->|Return Script| Marketing
+    Marketing -->|Result| Manager
+    Manager -->|Response| API
 ```
-
----
-
-## 🧩 Component Detail
-
-### 1. State (`state.py`)
-에이전트가 공유하는 메모리 구조입니다.
-*   **`messages`**: 대화 기록 (LangChain BaseMessage).
-*   **`session_context`**: `MarketingSession` 인스턴스 (리소스 접근용).
-*   **`marketing_needed`**: 마케팅 개입 여부 (True/False).
-*   **`product_candidates`**: 추천할 상품 후보 리스트.
-
-### 2. Nodes (`nodes.py`)
-각 단계별 로직이 독립된 함수로 구현되어 있습니다.
-
-#### 🔍 Analyze Node
-*   **역할**: 들어온 메시지가 안전한지(Safety), 마케팅 기회가 있는지(Intent) 판단.
-*   **사용 리소스**: `Gatekeeper` (Regex + Fast LLM).
-*   **출력**: `marketing_needed`, `marketing_type` (upsell/retention 등).
-
-#### 📚 Retrieve Node
-*   **역할**: 판단된 의도에 맞춰 마케팅 근거와 상품을 찾음.
-*   **사용 리소스**:
-    *   `session.build_query()`: 대화 내역 요약 쿼리 생성.
-    *   `QdrantSearchEngine`: 약관, 가이드라인 검색.
-    *   `ProductSearchIndex`: 요금제, 결합 상품 검색.
-
-#### 🧠 Generate Node
-*   **역할**: 검색된 정보와 고객 프로필을 종합하여 최종 멘트 생성.
-*   **사용 리소스**: `OpenAICompatibleLLM`.
-*   **로직**:
-    1.  `session.build_system_prompt()`로 페르소나 설정.
-    2.  검색 결과, 고객 정보, 대화 이력을 프롬프트에 주입.
-    3.  JSON 포맷으로 의사결정(`decision`)과 스크립트(`agent_script`) 생성.
-
----
-
-## 🚀 Execution Flow (코드 흐름)
-
-### A. New Way (`MarketingService`)
-1.  **FastAPI**가 `handle_marketing_message` 호출.
-2.  `MarketingGraph.ainvoke(inputs)` 실행.
-3.  그래프가 `Analyze -> Retrieve -> Generate` 순서로 실행되며 결과 반환.
-4.  결과를 `Agent Manager` 포맷에 맞춰 전송.
-
-### B. Legacy Way (`MarketingConsumer`)
-1.  `Consumer`가 `session.step()` 호출.
-2.  **Refactored `step()`**: 내부적으로 `MarketingGraph`를 생성하고 실행.
-3.  그래프 실행 결과를 기존 `consumer`가 기대하는 딕셔너리 형태로 변환하여 반환.
-4.  (즉, 레거시 코드도 내부적으로는 최신 그래프 로직을 사용함)
-
----
-
-## 🧹 Refactoring Notes
-*   **Code Cleanup**: 기존의 비대했던 `step()` 메서드 로직을 모두 그래프 노드(`nodes.py`)로 이관하고, `step()`은 단순한 래퍼(Wrapper)가 되었습니다.
-*   **Access Control**: 내부 메서드였던 `_system_prompt`를 `build_system_prompt`로 변경하여 노드에서 안전하게 접근하도록 수정했습니다.
