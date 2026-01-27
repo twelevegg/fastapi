@@ -1,7 +1,7 @@
 import asyncio
 from typing import Dict, Any, Optional, List
 from app.agent.marketing.session import build_session, MarketingSession
-from app.agent.marketing.buffer import StreamBuffer
+from app.agent.marketing.legacy.buffer import StreamBuffer
 
 class MarketingConsumer:
     """

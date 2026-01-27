@@ -4,7 +4,7 @@ import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 # from src.consumer import MarketingConsumer
-from app.agent.marketing.consumer import MarketingConsumer
+from app.agent.marketing.legacy.consumer import MarketingConsumer
 
 # Singleton Instance
 _consumer = None
