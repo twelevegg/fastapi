@@ -48,46 +48,61 @@ async def handle_marketing_message(turn: dict, session_id: str, customer_info: d
             "agent_type": "marketing"
         }
         
+from app.agent.marketing.graph import build_marketing_graph
+from langchain_core.messages import HumanMessage, AIMessage
+
+# Initialize Graph Once
+marketing_graph = build_marketing_graph()
+
+# ... (inside handle_marketing_message) ...
     # If customer turn, add and step
     if speaker == "customer":
+        # Synchronize session history (Legacy support for session.turns)
         session.add_turn(speaker="customer", transcript=transcript, turn_id=turn_id)
         
-        # Run AI Step (RAG + LLM)
+        # Prepare Graph Inputs
+        # We construct 'messages' list for LangGraph from session.turns or just pass the new message?
+        # LangGraph MemorySaver will persist state, but our 'session_id' key in config handles thread.
+        # However, we are using 'session_context' to pass the heavy object.
+        
+        # We need to construct the current turn message
+        current_msg = HumanMessage(content=transcript)
+        
+        graph_config = {"configurable": {"thread_id": session_id}}
+        initial_state = {
+            "messages": [current_msg], # add_messages reducer will append this
+            "session_context": session, # Inject resource
+            "session_id": session_id,
+            "marketing_needed": False # Default
+        }
+        
+        # Run Graph
         try:
-            result = await session.step()
+            print(f"[MarketingService] Invoking Graph for {session_id}")
+            final_state = await marketing_graph.ainvoke(initial_state, config=graph_config)
         except Exception as e:
-            print(f"[MarketingService] Step failed: {e}")
+            print(f"[MarketingService] Graph failed: {e}")
+            import traceback
+            traceback.print_exc()
             return {"next_step": "skip", "reasoning": f"Error: {e}"}
             
-        # 3. Extract Response
-        # We need to map MarketingSession result to AgentManager/Guidance format if possible,
-        # or just return the raw result and let the client handle it.
-        # The Orchestrator expects: recommended_answer, work_guide, next_step
+        # Extract Results from Final State
+        marketing_needed = final_state.get("marketing_needed", False)
+        marketing_type = final_state.get("marketing_type", "none")
+        agent_script = final_state.get("agent_script", "")
         
-        marketing_needed = result.get("marketing_needed", False)
-        marketing_type = result.get("marketing_type", "none")
-        
-        # Extract script
-        agent_script = ""
-        decision = result.get("decision", {})
-        if isinstance(decision, dict):
-             acts = decision.get("next_actions", [])
-             if acts and isinstance(acts, list):
-                 script_obj = acts[0].get("agent_script", {})
-                 agent_script = script_obj.get("proposal") or script_obj.get("opening") or ""
-        
-        # If no marketing needed, we might want to skip or just be silent support
-        # But for now, let's always return the script if it exists
-        
-        if not agent_script:
-            agent_script = result.get("policy_answer", {}).get("answer", "")
+        # Update Session History with Agent Response (for next turn context)
+        if agent_script:
+            session.add_turn(speaker="agent", transcript=agent_script)
             
         return {
             "agent_type": "marketing",
             "next_step": "generate" if agent_script else "skip",
             "recommended_answer": agent_script,
             "work_guide": f"Marketing Type: {marketing_type} (Needed: {marketing_needed})",
-            "full_result": result # Optional: pass full result for debugging
+            # "full_result": final_state # Optional
         }
+            
+
         
     return {"next_step": "skip", "reasoning": "Unknown speaker"}
