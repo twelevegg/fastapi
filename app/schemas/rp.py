@@ -11,4 +11,3 @@ class RPChatResponse(BaseModel):
     message: str
     understanding_level: int
     ready_to_close: bool
-    qa_result: dict | None = None
