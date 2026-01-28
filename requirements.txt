@@ -8,5 +8,9 @@ langgraph
 langchain
 langchain-qdrant
 langchain-community
+langchain-openai
 qdrant-client
 fastembed
+pandas
+openpyxl
+numpy

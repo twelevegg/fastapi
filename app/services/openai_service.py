@@ -1,4 +1,5 @@
 from openai import AsyncOpenAI
+from langchain_openai import ChatOpenAI
 from app.core.config import settings
 from app.core.exceptions import OpenAIException
 
@@ -37,5 +38,16 @@ class OpenAIService:
             return response.choices[0].message.content.strip()
         except Exception as e:
             raise OpenAIException(f"OpenAI API Error: {str(e)}")
+
+    # Guidance용
+    def get_guidance_model(
+        self, 
+        model: str = "gpt-4o-mini", 
+        temperature: float = 0) -> ChatOpenAI:
+        return ChatOpenAI(
+            model=model,
+            temperature=temperature,
+            openai_api_key=settings.OPENAI_API_KEY
+        )
 
 openai_service = OpenAIService()

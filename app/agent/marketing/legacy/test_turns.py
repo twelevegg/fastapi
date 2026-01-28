@@ -1,0 +1,22 @@
+TEST_TURNS = [
+    {"turn_id": 5, "speaker": "agent", "transcript": "이동해서."},
+    {"turn_id": 6, "speaker": "customer", "transcript": "재결합하려고 하는데요 그래서 저는."},
+    {"turn_id": 7, "speaker": "agent", "transcript": "말씀을 하셨군요 바로 확인해서 재결합 도와드릴 거고요 성함이 강영웅 고객님 본인 맞으시고요네 맞습니다."},
+    {"turn_id": 8, "speaker": "customer", "transcript": "인터넷에 주소지 한번 말씀 부탁드릴게요. 남부순환로 163가길 42 302호."},
+    {"turn_id": 9, "speaker": "agent", "transcript": "정확하게 확인되고 있고요 저혈압 해주실 번호는 지금 연락주신 번호가 맞으시나요?"},
+    {"turn_id": 10, "speaker": "customer", "transcript": "필요하다 보니 잠시만."},
+    {"turn_id": 11, "speaker": "agent", "transcript": ""},
+    {"turn_id": 12, "speaker": "customer", "transcript": "휴대폰 요금제는 바로 조회가 되었구요 결합이 가능한 요금들을 확인이 되고 있네요. 그러면 참 쉬운 가족 결합으로 도와드릴 거고 인터넷 요금을 현재 500m 사용 중이셔서."},
+    {"turn_id": 13, "speaker": "agent", "transcript": "이번엔 요금 쪽에서 9,900원 할인을 받으실 수가 있습니다."},
+    {"turn_id": 14, "speaker": "customer", "transcript": "그리고 고객님의 동의도 필수적으로 필요하다 보니 저랑 과잉 녹취파일 간단하게 들어주시고."},
+    {"turn_id": 15, "speaker": "agent", "transcript": "이동해 주시면 마지막에네라고 말씀을 드릴게요."},
+    {"turn_id": 16, "speaker": "customer", "transcript": "쉬운 가족결합을 위해 lg유플러스에서는 개인정보를 교체 이용 시급 위탁하며 결합 서비스 종료시까지 보관합니다."},
+    {"turn_id": 17, "speaker": "agent", "transcript": "핸드폰과 휴대폰."},
+    {"turn_id": 24, "speaker": "customer", "transcript": "가족 구성원 확인서류가 부적합하거나 벼락에 최소 요건을 불충족할 때입니다."},
+    {"turn_id": 25, "speaker": "agent", "transcript": "주요 내용은 문자를 꼭 확인 부탁드립니다."},
+    {"turn_id": 26, "speaker": "customer", "transcript": "과일."},
+    {"turn_id": 27, "speaker": "agent", "transcript": "이라고."},
+    {"turn_id": 28, "speaker": "customer", "transcript": "확인 감사합니다 요청해주신 휴대폰과 인터넷 결합인 참 쉬운 가족 결합으로 도와드리고요. 이번 달은 오늘부터 결합이 되기 때문에 오늘부터 말일까지 날짜기 낳는 금액으로 한번 확인해 주실 수가 있을 거예요. 저랑 말고도 다른 응원시장은 없으신가요?"},
+    {"turn_id": 29, "speaker": "agent", "transcript": ""},
+    {"turn_id": 30, "speaker": "customer", "transcript": "오늘 하루도 행복한 하루 보내시길 바라겠습니다 감사합니다 좋은 하루 되세요네 감사합니다 상담사 이유빈이였습니다."}
+]

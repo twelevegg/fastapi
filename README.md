@@ -1,5 +1,8 @@
 # FastAPI AI Service
 
+## Requirements
+- Python 3.13+
+
 ## 실행 방법
 
 ### 1. 환경 설정 및 의존성 설치
@@ -25,6 +28,9 @@ VERSION="1.0.0"
 API_V1_STR="/api/v1"
 QDRANT_URL = [노션에 있음]
 QDRANT_API_KEY = [노션에 있음]
+QDRANT_COLLECTION_NAME = "cs_guideline"
+QDRANT_DENSE_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+QDRANT_SPARSE_EMBEDDING_MODEL = "Qdrant/bm25"
 ```
 
 ### 3. 서버 실행
