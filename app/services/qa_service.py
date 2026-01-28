@@ -35,12 +35,16 @@ class QAService:
         asc = sorted(turns, key=lambda x: x.sentence_score)
 
         def to_h(t: TurnEvaluation) -> SentenceHighlight:
+            short_feedback = t.positive_feedback or t.negative_feedback
             return SentenceHighlight(
                 turn_index=t.turn_index,
                 customer_utterance=t.customer_utterance,
                 agent_utterance=t.agent_utterance,
                 expert_recommended_response=t.expert_recommended_response,
                 sentence_score=t.sentence_score,
+                short_feedback=short_feedback,
+                positive_feedback=t.positive_feedback,
+                negative_feedback=t.negative_feedback,
             )
 
         top = [to_h(t) for t in desc[:top_k]]
