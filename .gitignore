@@ -208,3 +208,11 @@ __marimo__/
 
 # Mac OS Canned Search
 *.cannedSearch
+
+
+# Backups and Local Data
+src_backup/
+result*.json
+*.log
+
+marketing_architecture_diagram.html

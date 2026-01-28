@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marketing Agent Architecture</title>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true });
+    </script>
+</head>
+
+<body>
+    <h1>Marketing Agent Visual Architecture</h1>
+    <div class="mermaid">
+        graph TD
+        User([User]) -->|WebSocket| API[Agent Endpoint]
+        API --> Manager[Agent Manager]
+
+        subgraph "Dual Agent System"
+        Manager -->|Task| Guidance[Guidance Agent]
+        Manager -->|Task| Marketing[Marketing Service]
+        end
+
+        subgraph "Marketing Agent Internals"
+        Marketing -->|Invoke| Graph[LangGraph Workflow]
+
+        Graph --> Node1[Analyze Node]
+        Node1 -->|Router| Helper1[Router.py / Gatekeeper]
+
+        Node1 --> Node2[Retrieve Node]
+        Node2 -->|Search| Helper2[Session.py / Qdrant & DB]
+
+        Node2 --> Node3[Generate Node]
+        Node3 -->|Inference| Helper3[Session.py / LLM]
+        end
+
+        Graph -->|Return Script| Marketing
+        Marketing -->|Result| Manager
+        Manager -->|Response| API
+    </div>
+
+    <h2>Workflow Diagram</h2>
+    <div class="mermaid">
+        graph TD
+        Start([Input: Customer Turn]) --> Analyze
+
+        subgraph "LangGraph Execution"
+        Analyze[🔍 Analyze Node] -->|Intent & Safety Check| Router{Marketing Needed?}
+
+        Router -- No --> Skip[Skip / Default Policy]
+        Router -- Yes --> Retrieve[📚 Retrieve Node]
+
+        Retrieve -->|Search Qdrant & Products| Generate[🧠 Generate Node]
+
+        Generate --> End([Output: Agent Script])
+        Skip --> End
+        end
+
+        subgraph "Resources (Session Context)"
+        Analyze -.-> Gatekeeper[Gatekeeper Class]
+        Retrieve -.-> Qdrant[(Qdrant Vector DB)]
+        Retrieve -.-> ProductDB[(Product Index)]
+        Generate -.-> LLM[(OpenAI LLM)]
+        end
+    </div>
+</body>
+
+</html>
