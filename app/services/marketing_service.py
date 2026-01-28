@@ -32,8 +32,8 @@ async def handle_marketing_message(turn: dict, session_id: str, customer_info: d
         customer_id = None
         phone = None
         if customer_info:
-             # Basic mapping if available
-             pass
+             customer_id = customer_info.get("customer_id")
+             phone = customer_info.get("phone")
         
         try:
              _sessions[session_id] = build_session(customer_id=customer_id, phone=phone)
@@ -66,6 +66,34 @@ async def handle_marketing_message(turn: dict, session_id: str, customer_info: d
         # We need to construct the current turn message
         current_msg = HumanMessage(content=transcript)
         
+        # [Sniper Logic] Early Exit Check
+        # 1. Get Context (Last Agent Message)
+        last_agent_turn = ""
+        if session.turns and session.turns[-1].speaker == "agent":
+             last_agent_turn = session.turns[-1].transcript
+             
+        # 2. Fast Route Check (Tier 2 LLM/Router)
+        route_result = await session.gatekeeper.semantic_route(transcript, context=last_agent_turn)
+        print(f"[MarketingService] Sniper Check: {route_result}")
+        
+        is_opportunity = route_result.get("marketing_opportunity", False)
+        # If explicit trigger (e.g., user wants solution) or resolution detected, we proceed.
+        # But 'marketing_opportunity' should cover these if router.py is good.
+        
+        if not is_opportunity:
+            # [Veteran Mode Upgrade]
+            # Don't skip immediately. Let the Graph's "Deep Analysis" decide.
+            # Only skip if explicit 'safe' check failed earlier (which is handled by router but let's double check)
+            # Actually, let's trust the router's "marketing_opportunity" logic IS the problem.
+            # We will pass it to the graph, but maybe we can flag it.
+            print("[MarketingService] Sniper Mode: No obvious trigger, but proceeding to Deep Analysis (Veteran Mode)")
+            # return {
+            #     "next_step": "skip", 
+            #     "reasoning": "Sniper: No marketing opportunity",
+            #     "agent_type": "marketing"
+            # }
+
+        # 3. If Active, Proceed to Graph
         graph_config = {
             "configurable": {
                 "thread_id": session_id,
@@ -76,7 +104,7 @@ async def handle_marketing_message(turn: dict, session_id: str, customer_info: d
             "messages": [current_msg], # add_messages reducer will append this
             # "session_context": session, # REMOVED: Passed via config
             "session_id": session_id,
-            "marketing_needed": False # Default
+            "marketing_needed": True # We already know it's true from Sniper
         }
         
         # Run Graph

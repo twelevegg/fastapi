@@ -14,9 +14,10 @@ class MarketingState(TypedDict):
     customer_profile: Optional[Dict[str, Any]] # Raw or Processed profile
     
     # Analysis Results
-    call_stage: str # "verification", "consent", "problem_solving", "offer_discussion", "closing"
+    call_stage: Optional[str] # Legacy, keeping for compatibility or removing? Let's keep as hint but use conversation_stage
+    conversation_stage: Literal["listening", "proposing", "negotiating", "closing"] # [NEW] Core State
     marketing_needed: bool
-    marketing_type: Literal["none", "support_only", "upsell", "retention", "hybrid"]
+    marketing_type: Literal["none", "support_only", "upsell", "retention", "retention_price", "cost_optimization", "hybrid", "explanation", "alternative"]
     
     # Retrieval
     search_query: Optional[str]
@@ -24,7 +25,9 @@ class MarketingState(TypedDict):
     context_text: Optional[str] # Formatted string for LLM
     
     # Products
-    product_candidates: List[Dict[str, Any]]
+    product_candidates: List[Dict[str, Any]] # Candidates found in THIS turn
+    current_proposal: Optional[List[Dict[str, Any]]] # [NEW] Active Proposal (Persistent)
+    rejected_proposals: List[str] # [NEW] Blacklist
     
     # Output Generation
     generated_reasoning: Optional[str]

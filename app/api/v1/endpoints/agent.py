@@ -22,7 +22,7 @@ async def websocket_endpoint(websocket: WebSocket):
     print(f"[AgentManager] Client Connected: {current_session_id}")
     
     # 고객 정보 (예시) - 실제로는 DB에서 조회 - 지금은 Mock데이터임
-    customer_info = {"name": "김고객", "rate_plan": "5G 프리미어", "joined_date": "2023-05-20"}
+    customer_info = {"customer_id": "CUST-0001", "name": "김토스", "rate_plan": "유쓰 5G 심플+", "joined_date": "2023-05-20"}
     is_first_turn = True
 
     try:
@@ -57,19 +57,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         "turn_id": turn_id
                     }
                     
-                    # Agent Manager를 통해 모든 에이전트 병렬 실행
+                    # Agent Manager를 통해 모든 에이전트 병렬 실행 (Streaming)
                     info_to_send = customer_info if is_first_turn else None
                     
-                    results = await agent_manager.process_turn(
+                    async for result in agent_manager.process_turn_stream(
                         turn=turn_data,
                         session_id=current_session_id,
                         customer_info=info_to_send
-                    )
-                    
-                    is_first_turn = False
-                    
-                    # 수집된 유효 결과들을 전송
-                    for result in results:
+                    ):
+                        # 결과가 나오는 즉시 전송
                         response = {
                             "type": "result",
                             "agent_type": result.get("agent_type", "unknown"),
@@ -81,6 +77,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             }
                         }
                         await websocket.send_json(response)
+                    
+                    is_first_turn = False
                         
                 except Exception as e:
                     print(f"Error processing turn: {e}")

@@ -19,9 +19,9 @@ class Gatekeeper:
     def __init__(self):
         # 1. Emotion Blacklist (Regex for speed)
         self.furious_keywords = [
-            r"개새끼", r"미친", r"씨발", r"닥쳐", r"장난해", 
+            r"개새끼", r"미친", r"씨발", r"닥쳐", r"장난해", r"임마", r"자식", r"새끼", r"꺼져",
             r"팀장", r"상급자", r"책임자", r"소보원", r"고발", r"신고",
-            r"말귀", r"몇 번을 말해", r"안 산다"
+            r"말귀", r"몇 번을 말해", r"안 산다", r"짜증"
         ]
         self.furious_pattern = re.compile("|".join(self.furious_keywords), re.IGNORECASE)
 
@@ -35,7 +35,8 @@ class Gatekeeper:
         # 3. Whitelist (High Potential)
         self.opportunity_keywords = [
             r"요금", r"할인", r"약정", r"만료", r"바꾸", r"변경", 
-            r"인터넷", r"데이터", r"부족"
+            r"인터넷", r"데이터", r"부족", r"느려", r"답답", r"비싸",
+            r"해지", r"탈퇴", r"그만", r"끊어", r"다른"
         ]
         self.opportunity_pattern = re.compile("|".join(self.opportunity_keywords), re.IGNORECASE)
 
@@ -96,17 +97,46 @@ class Gatekeeper:
                 "marketing_opportunity": (topic == "marketing")
             }
 
-        # 2. Fast LLM Call
+        # 2. [Optimization] Zero-Cost Heuristic Checks (Save API Cost)
+        
+        # 2-0. Regex Classification (Priority 1)
+        # Check explicit markers FIRST.
+        regex_topic = await self.classify_topic(text)
+        if regex_topic == "complaint":
+             print(f"[Router] ⏩ Skip: Detected complaint/insult via Regex ('{text}')")
+             return {"intent": "complaint", "marketing_opportunity": False}
+        if regex_topic == "marketing":
+             # If explicit marketing keyword is present, proceed to LLM for detail, OR return True immediately?
+             # For now, let's allow LLM to decide strategy if keyword is found.
+             pass
+
+        # 2-1. Length Check (Short & No Keyword)
+        # If < 6 chars and NO marketing keyword -> Skip.
+        # "야 임마"(5) -> No marketing key -> Skip.
+        # "데이터"(3) -> Marketing key -> Pass.
+        if len(text) < 6 and regex_topic != "marketing":
+            print(f"[Router] ⏩ Skip: Text too short & no trigger ('{text}')")
+            return {"intent": "neutral", "marketing_opportunity": False}
+
+        # 2-3. Safety Check
+        is_safe_result = await self.check_safety(text)
+        if not is_safe_result.is_safe:
+             print("[Router] ⏩ Skip: Unsafe content")
+             return {"intent": "unsafe", "marketing_opportunity": False}
+
+        # 3. Fast LLM Call (Only for ambiguous cases)
         try:
             prompt = (
                 f"Analyze this customer call transcript. Extract JSON: {{'intent': 'marketing'|'support'|'complaint'|'neutral', "
                 f"'sentiment': 'positive'|'neutral'|'negative'|'furious', 'marketing_opportunity': boolean}}.\n"
                 f"Previous System Turn: \"{context}\"\n"
                 f"Customer Input: \"{text}\"\n"
-                f"CRITICAL RULES:\n"
-                f"1. If customer complains about slow speed, high bill, or lack of data, set 'marketing_opportunity': true (Upsell chance).\n"
-                f"2. If customer asks a Follow-up Question about a previous proposal (e.g., 'What is it?', 'How much?'), set 'marketing_opportunity': true.\n"
-                f"3. Only set 'marketing_opportunity': false if it is a pure technical crash or furious legal threat."
+                f"CRITICAL RULES (Sniper Mode):\n"
+                f"0. [RETENTION] If user mentions 'Cancel', 'Terminate', 'Unsubscribe' (해지, 탈퇴) -> SET 'marketing_opportunity': true (Retention Opportunity).\n"
+                f"1. [SOLVER] If complaint is about 'Price', 'Data Cap', or 'Slow Speed' (that can be fixed by plan upgrade) -> SET 'marketing_opportunity': true.\n"
+                f"2. [RESOLUTION] If customer says 'Fixed', 'Thanks', ' Solved' -> SET 'marketing_opportunity': true (Post-resolution Offer).\n"
+                f"3. [SKIP] If problem is purely technical (Device broken, No Signal, WiFi setting, Login failed) AND not resolved yet -> SET 'marketing_opportunity': false.\n"
+                f"4. [SKIP] If customer is FURIOUS -> SET 'marketing_opportunity': false."
             )
             print("[Router] 🚀 Sending request to gpt-4o-mini...")
             import time

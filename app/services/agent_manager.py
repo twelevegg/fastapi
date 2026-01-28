@@ -37,5 +37,31 @@ class AgentManager:
                 
         return valid_results
 
+    async def process_turn_stream(self, turn: dict, session_id: str, **kwargs):
+        """
+        등록된 모든 에이전트를 병렬로 실행하고, 완료되는 순서대로 결과를 yield합니다.
+        (Streaming Response)
+        """
+        if not self.agents:
+            return
+
+        # 모든 에이전트를 병렬로 실행
+        tasks = [agent(turn, session_id, **kwargs) for agent in self.agents]
+        
+        # 완료되는 순서대로 처리
+        for future in asyncio.as_completed(tasks):
+            try:
+                res = await future
+                if isinstance(res, Exception):
+                    print(f"Agent execution error: {res}")
+                    continue
+                
+                # None이 아니고 'skip'이 아닌 유효한 결과만 yield
+                if res and res.get("next_step") != "skip":
+                    yield res
+                    
+            except Exception as e:
+                print(f"Agent execution error (unhandled): {e}")
+
 # 싱글톤 인스턴스
 agent_manager = AgentManager()

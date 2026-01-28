@@ -17,6 +17,10 @@ from langchain_core.documents import Document
 from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
 from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 
+from app.agent.marketing.prompts import (
+    BASE_SYSTEM, STRATEGY_UPSELL, STRATEGY_RETENTION, STRATEGY_DEFAULT
+)
+
 
 # -------------------------
 # Paths / files
@@ -220,20 +224,44 @@ class CustomerDB:
     @staticmethod
     def _derive_signals(p: CustomerProfile) -> List[str]:
         s = []
-        if p.contract_remaining_months is not None and p.contract_remaining_months <= 1:
-            s.append("약정 만료 임박(재약정/요금 최적화/이탈 방어 기회)")
+        # 1. Contract Analysis
+        if p.contract_remaining_months is not None:
+            if p.contract_remaining_months <= 1:
+                s.append("약정 만료 임박(D-30: 즉시 재약정 유도)")
+            elif p.contract_remaining_months <= 3:
+                s.append("약정 종료 예정(D-90: 선제적 방어/요금제 상향 제안)")
+                
+        # 2. Overage (Pain Point)
         if (p.overage_1m or "").upper() == "Y" or (p.overage_2m or "").upper() == "Y":
-            s.append("최근 초과요금 발생(상향/옵션/무제한 제안 기회)")
+            s.append("초과요금 발생(요금제 상향 1순위 타겟)")
+            
+        # 3. Usage Pattern (Roaming, Discount, Internet)
         if p.roaming_history and "없음" not in p.roaming_history:
-            s.append("로밍 이력 존재(로밍 옵션/국제로밍 안내)")
+            s.append("로밍 이력 보유(해외 여행/로밍 상품 관심)")
         if p.discount_status and "미적용" in p.discount_status:
-            s.append("할인 미적용(선택약정/가족결합/인터넷결합 점검)")
+            s.append("할인 미적용(결합/약정 할인 미끼로 설득 가능)")
         if p.internet_plan:
-            s.append("인터넷 결합 보유/가능(결합 할인/재결합/상향 여지)")
+            s.append("인터넷 사용중(유무선 결합 유지/혜택 강조)")
+        else:
+            s.append("인터넷 미사용(인터넷 결합상품 크로스셀링 기회)")
+            
+        # 4. Household & Segment
         if p.household and "가족" in p.household:
-            s.append("가족 가구(가족결합/공유데이터/추가회선 여지)")
+            s.append("가족 세대(패밀리 요금제/결합할인 소구)")
         if p.segment_guess and "학생" in p.segment_guess:
-            s.append("학생 추정(유스/청년 혜택 적합 가능)")
+            s.append("학생/청소년(데이터 무제한보다는 가성비/공유 혜택)")
+            
+        # 5. ARPU (Spending Power) - NEW
+        if p.monthly_fee_won:
+            if p.monthly_fee_won >= 80000:
+                s.append("고액 요금 납부자(VIP: 멤버십/프리미엄 혜택 강조하여 이탈 방어)")
+            elif p.monthly_fee_won <= 35000:
+                s.append("저액 요금 납부자(ARPU 증대 필요: 1~2만원 추가 업셀링 시도)")
+                
+        # 6. Data Sharing
+        if p.data_share and "사용" in p.data_share:
+            s.append("데이터 쉐어링 이용(멀티 디바이스 유저 -> 워치/태블릿 결합 제안)")
+            
         return s
 
 
@@ -298,6 +326,8 @@ class ProductSearchIndex:
         self._emb = None
         self._mat = None
         self._use_semantic = False
+        # [Context Optimization] Cache names for fast lookups
+        self.all_names = {it.name for it in items}
 
     @staticmethod
     def from_excel(path: str) -> "ProductSearchIndex":
@@ -349,12 +379,23 @@ class ProductSearchIndex:
         top_k: int = 6,
         strategy_hint: str = "none",
         must_include_names: Optional[List[str]] = None,
+        exclude_names: Optional[List[str]] = None,
+        max_price: Optional[int] = None, # [NEW] Price cap
         semantic_weight: float = 0.65,
         keyword_weight: float = 0.35,
     ) -> List[ProductItem]:
         q = (query or "").strip()
+        
+        # Pre-filter candidates (Optimization)
+        candidates = self.items
+        if max_price is not None:
+            candidates = [it for it in candidates if (it.price_won is None or it.price_won <= max_price)]
+            
         if not q:
-            return self.items[:top_k]
+            # Handle exclusions even in empty query
+            if exclude_names:
+                candidates = [it for it in candidates if it.name not in exclude_names]
+            return candidates[:top_k]
 
         qt = q.lower()
         toks = [t for t in re.split(r"\s+", qt) if t][:12]
@@ -362,7 +403,7 @@ class ProductSearchIndex:
 
         # keyword score
         kw_scores = []
-        for it in self.items:
+        for it in candidates: # Use filtered candidates
             text = it.to_search_text().lower()
             hit = 0
             for tk in toks:
@@ -377,15 +418,38 @@ class ProductSearchIndex:
             kw = kw / kw.max()
 
         # semantic score
+        # Note context: semantic search usually runs on ALL items if pre-computed matrix.
+        # But here we filtered 'candidates'. We need to map indices or just run loop.
+        # For simplicity/speed, if candidates < total, we might just re-embed or rely on keywords?
+        # Actually our scale is small (50 items). We can just filter the results after scoring.
+        # Let's revert to scoring ALL, then filtering. It's safer for matrix indices.
+        
+        # ... Revert Filter-First approach due to Matrix Index mismatch ...
+        # Let's Filter-Last.
+        
+        # keyword score (on ALL)
+        kw_scores = []
+        for it in self.items:
+             text = it.to_search_text().lower()
+             hit = 0
+             for tk in toks:
+                 if tk in text: hit += 1
+             for b in bonus:
+                 if b in qt and b in text: hit += 1
+             kw_scores.append(hit)
+        kw = np.array(kw_scores, dtype=np.float32)
+        if kw.max() > 0: kw = kw / kw.max()
+        
+        # semantic score (on ALL)
         sem = np.zeros(len(self.items), dtype=np.float32)
         if self._use_semantic and self._emb is not None and self._mat is not None:
-            try:
-                qv = np.array(self._emb.embed_query(q), dtype=np.float32)
-                qv = qv / (np.linalg.norm(qv) + 1e-12)
-                s = self._mat @ qv
-                sem = ((s + 1.0) / 2.0).astype(np.float32)
-            except Exception:
-                sem = np.zeros(len(self.items), dtype=np.float32)
+             try:
+                 qv = np.array(self._emb.embed_query(q), dtype=np.float32)
+                 qv = qv / (np.linalg.norm(qv) + 1e-12)
+                 s = self._mat @ qv
+                 sem = ((s + 1.0) / 2.0).astype(np.float32)
+             except Exception:
+                 sem = np.zeros(len(self.items), dtype=np.float32)
 
         score = semantic_weight * sem + keyword_weight * kw
         ranked = np.argsort(-score).tolist()
@@ -398,15 +462,25 @@ class ProductSearchIndex:
                 if not name:
                     continue
                 for i, it in enumerate(self.items):
+                    if exclude_names and it.name in exclude_names: continue
                     if name == it.name or (name in it.name) or (it.name in name):
                         forced.append(i)
 
         out, seen = [], set()
         for i in forced + ranked:
-            if i in seen:
+            if i in seen: continue
+            
+            it = self.items[i]
+            
+            # [NEW] Exclude Logic
+            if exclude_names and it.name in exclude_names: continue
+            
+            # [NEW] Price Logic
+            if max_price is not None and it.price_won is not None and it.price_won > max_price:
                 continue
+
             seen.add(i)
-            out.append(self.items[i])
+            out.append(it)
             if len(out) >= top_k:
                 break
 
@@ -944,9 +1018,16 @@ class MarketingSession:
         # Stores Qdrant results for triggers found in fragments
         self._prefetch_cache: Dict[str, Any] = None
         
+        # [Context Optimization] Sticky Product Context
+        self.current_proposal: Optional[List[Dict[str, Any]]] = None
+        
         self.turns: List[Turn] = []
         self.state_prev = {"call_stage": "unknown", "marketing_needed": False, "marketing_type": "none"}
         self.call_stage = "unknown"
+
+        # [NEW] LangGraph with Persistent Memory
+        from app.agent.marketing.graph import build_marketing_graph
+        self.graph = build_marketing_graph()
 
     def add_turn(self, speaker: str, transcript: str, turn_id: Optional[int] = None) -> None:
         sp = "customer" if speaker == "customer" else "agent"
@@ -986,40 +1067,45 @@ class MarketingSession:
 
     def build_query(self) -> str:
         dialog = self.dialogue_text()
+        
+        # [Context Optimization] Extract Product Names from recent dialogue
+        # Specifically, check the LAST turn (Agent or Customer) for mentions of ANY known product.
+        recent_mentions = []
+        last_turn_text = ""
+        if self.turns:
+            # Check last 2 turns (User + Agent)
+            for t in self.turns[-2:]:
+                if t.transcript: 
+                    last_turn_text += " " + t.transcript
+        
+        if self.product_index and hasattr(self.product_index, "all_names"):
+             for name in self.product_index.all_names:
+                 if name in last_turn_text:
+                     recent_mentions.append(name)
+        
         kws = []
         for k in ["해지", "위약금", "약정", "결합", "가족결합", "재결합", "요금제", "변경", "할인", "혜택", "동의", "개인정보", "인터넷", "IPTV"]:
             if k in dialog:
                 kws.append(k)
-        kws = kws[:10]
-        parts = [p for p in [self.customer.mobile_plan, self.customer.internet_plan, " ".join(kws), dialog] if p]
+        
+        # Prioritize recent product mentions in the query
+        parts = recent_mentions + kws[:10]
+        
+        # Add plans, dialogue, and segment hint, and DERIVED SIGNALS (VIP, Churn Risk etc)
+        segment = self.customer.segment_guess or ""
+        sig_text = " ".join(self.customer.signals)
+        parts += [p for p in [self.customer.mobile_plan, self.customer.internet_plan, segment, sig_text, dialog] if p]
+        
         return " | ".join(parts)[:1400]
 
-from app.agent.marketing.prompts import (
-    BASE_SYSTEM, ADDON_VERIFICATION_CONSENT, ADDON_RETENTION, 
-    ADDON_UPSELL, ADDON_HYBRID, ADDON_SUPPORT_ONLY, USER_TEMPLATE
-)
-
-    def build_system_prompt(self, router_hint: Dict[str, Any]) -> str:
-        stage = router_hint.get("call_stage_hint", "unknown")
-        mtype = router_hint.get("marketing_type_hint", "none")
-        addon = ADDON_SUPPORT_ONLY
-        if stage in ["verification", "consent"]:
-            addon = ADDON_VERIFICATION_CONSENT
-        elif mtype == "retention":
-            addon = ADDON_RETENTION
-        elif mtype == "upsell":
-            addon = ADDON_UPSELL
-        elif mtype == "hybrid":
-            addon = ADDON_HYBRID
-        elif mtype in ["support_only", "none"]:
-            addon = ADDON_SUPPORT_ONLY
-        return BASE_SYSTEM + "\n\n" + addon
+    # [REMOVED] Legacy build_system_prompt (Logic moved to nodes.py)
+    # def build_system_prompt(self, router_hint: Dict[str, Any]) -> str:
+    #     pass
 
     async def step(self, session_id: str = "legacy_session") -> Dict[str, Any]:
         """
         [Refactored] Now wraps the LangGraph execution to ensure single source of truth.
         """
-        from app.agent.marketing.graph import build_marketing_graph
         from langchain_core.messages import HumanMessage
         
         # We need to construct input from the last turn
@@ -1030,9 +1116,8 @@ from app.agent.marketing.prompts import (
         if last_turn.speaker != "customer":
             return {"next_step": "skip", "marketing_needed": False}
         
-        # Instantiate Graph (Singleton in real app, but here local is fine for step compat)
-        # TODO: Ideally pass this in __init__
-        graph = build_marketing_graph()
+        # Use Persistent Graph
+        graph = self.graph
         
         current_msg = HumanMessage(content=last_turn.transcript)
         
@@ -1040,24 +1125,28 @@ from app.agent.marketing.prompts import (
         # Note: We must inject 'self' as session_context
         initial_state = {
             "messages": [current_msg],
-            "session_context": self,
-            "session_id": session_id,
-            "marketing_needed": False
+            # "session_context" is not state schema field, but some nodes might rely on state injection if not in config
+            # Actually nodes.py uses config["configurable"]["session"]. 
         }
         
-        config = {"configurable": {"thread_id": session_id}}
+        config = {
+            "configurable": {
+                "thread_id": session_id,
+                "session": self
+            }
+        }
         
         try:
-            print(f"[Session] invoking Graph (legacy step wrapper)...")
+            print(f"[Session] invoking Graph (persistent)... thread_id={session_id}")
             final_state = await graph.ainvoke(initial_state, config=config)
             
             # Map back to legacy result format for consumer compatibility
             return {
                 "marketing_needed": final_state.get("marketing_needed", False),
                 "marketing_type": final_state.get("marketing_type", "none"),
-                "call_stage": final_state.get("call_stage", "unknown"),
+                "call_stage": final_state.get("conversation_stage", "listening"),
                 "decision": {
-                    "next_actions": final_state.get("next_actions", [])
+                    "next_actions": final_state.get("next_actions", []) if final_state.get("next_actions") else [{"agent_script": {"opening": final_state.get("agent_script", "")}}]
                 },
                 "product_recommendations": final_state.get("product_candidates", []), # Schema match?
                 # ... Map other fields if needed ...

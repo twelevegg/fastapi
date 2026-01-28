@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     QDRANT_URL: str
     QDRANT_API_KEY: str
     QDRANT_COLLECTION_NAME: str
-    Qdrant_DENSE_EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    QDRANT_DENSE_EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     QDRANT_SPARSE_EMBEDDING_MODEL: str = "Qdrant/bm25"
 
     # LLM Configuration
