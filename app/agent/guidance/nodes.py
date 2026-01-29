@@ -141,8 +141,8 @@ async def generate_node(state: AgentState):
 
   # LLM 호출
   result = await chain.ainvoke({
-      "customer_info": state["customer_info"],
-      "context": state["context"],
+      "customer_info": state.get("customer_info", {}),
+      "context": state.get("context", ""),
       "last_messages": last_messages
   })
 
