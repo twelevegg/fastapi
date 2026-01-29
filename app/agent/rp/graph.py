@@ -9,7 +9,6 @@ from app.agent.rp.nodes import (
     state_update_node,
     customer_talk_node,
     close_talk_node,
-    qa_evaluate_node,
     decide_mode,
     # ✅ memory 관련 노드 (nodes.py에 있어야 함)
     memory_extraction_node,
@@ -35,8 +34,6 @@ def build_graph():
     workflow.add_node("memory_extraction", memory_extraction_node)
     workflow.add_node("memory_apply", memory_apply_node)
 
-    workflow.add_node("qa_evaluate", qa_evaluate_node)
-
     # -----------------------
     # Edges
     # -----------------------
@@ -58,12 +55,8 @@ def build_graph():
     workflow.add_edge("memory_extraction", "memory_apply")
     workflow.add_edge("memory_apply", END)
 
-
-
-
     # close 흐름: 종료 멘트 -> QA 평가 -> 종료
-    workflow.add_edge("close_talk", "qa_evaluate")
-    workflow.add_edge("qa_evaluate", END)
+    workflow.add_edge("close_talk", END)
 
     # ✅ 핵심: checkpointer 붙이기 (thread_id로 세션 유지)
     return workflow.compile(checkpointer=memory)
