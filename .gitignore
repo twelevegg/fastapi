@@ -216,3 +216,11 @@ result*.json
 *.log
 
 marketing_architecture_diagram.html
+
+# education relationed ignores
+*.mp4
+*.mp3
+*.pptx
+*.json
+*.png
+*.pdf
