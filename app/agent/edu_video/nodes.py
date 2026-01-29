@@ -11,7 +11,11 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
 # ✅ 비용을 줄이면서도 충분히 빠른 모델로 변경
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
+# ✅ 비용을 줄이면서도 충분히 빠른 모델로 변경
+# Lazy Load to avoid env key error at import time
+def get_llm():
+    return ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
+# llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
 
 def _clean_slide_title(title: str) -> str:
     t = str(title or "").strip()
@@ -133,7 +137,7 @@ def node_content_creator(state: AgentState):
         """
     )
     
-    response = (prompt | llm).invoke({"context": full_context})
+    response = (prompt | get_llm()).invoke({"context": full_context})
     
     try:
         clean_res = response.content.replace("```json", "").replace("```", "").strip()
@@ -177,7 +181,7 @@ def node_quiz_generator(state: AgentState):
         {context}
         """
     )
-    chain = prompt | llm
+    chain = prompt | get_llm()
     response = chain.invoke({"context": context_text, "num": num_questions})
     
     try:
@@ -239,7 +243,7 @@ def node_grader(state: AgentState):
  - 참고자료 <파일명> <페이지>P를 확인해보면 "<핵심 근거 구절>" 라고 되어 있어요.
 """
         
-        explanation_res = llm.invoke(explanation_prompt).content
+        explanation_res = get_llm().invoke(explanation_prompt).content
         
         # 피드백 저장
         result_text = "✅ [정답]" if is_correct else "❌ [오답]"
