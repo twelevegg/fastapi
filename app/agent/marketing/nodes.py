@@ -397,6 +397,10 @@ async def generate_node(state: MarketingState, config: RunnableConfig):
     
     [고객의 마케팅 니즈]
     {state.get('generated_reasoning', '분석 불가')}
+
+    [지시사항]
+    위 정보를 바탕으로 마케팅 전략을 수행하라.
+    특히, 상품을 추천한다면 반드시 'marketing_proposal' 필드에 "Before vs After" 비교 정보를 채워라.
     
     위 정보를 바탕으로 최적의 'recommended_pitch'를 생성하라.
     """
@@ -413,9 +417,41 @@ async def generate_node(state: MarketingState, config: RunnableConfig):
         
         agent_script = result.get("recommended_pitch", "")
         reasoning = result.get("reasoning", "")
+        marketing_proposal = result.get("marketing_proposal") # Extract Proposal JSON
         
         if not agent_script:
-             agent_script = "고객님, 잠시만 기다려주시면 혜택을 확인해드리겠습니다."
+             agent_script = {"ment": "- [시스템] 제안 내용 생성 중..."}
+
+        # [Fallback] If LLM failed to generate proposal but we have products, generate it manually
+        if not marketing_proposal and state.get("product_candidates"):
+            best_product = state.get("product_candidates")[0]
+            print(f"[Marketing] ⚠️ LLM returned null proposal. FLAGGING FALLBACK for {best_product['name']}")
+            
+            # Simple Rule-based Construction (Dashboard Style)
+            current_plan = session.customer.mobile_plan or "현재 요금제"
+            
+            # Auto-generate succinct pitch for fallback (Structured JSON)
+            agent_script = {
+                "needs": "혜택/요금 최적화 필요",
+                "recommendation": best_product['name'],
+                "comparison": f"{current_plan} -> {best_product['name']}",
+                "ment": "월 이용료는 비슷하지만 혜택은 2배 더 많습니다."
+            }
+            
+            marketing_proposal = {
+                "card_title": f"{best_product['name']} 제안",
+                "comparison": {
+                    "before": {"label": "현재", "desc": current_plan, "price_text": f"{session.customer.monthly_fee_won}원"},
+                    "after": {
+                        "label": "제안", 
+                        "desc": best_product['name'], 
+                        "price_text": best_product.get('price_text', '가격 문의'), 
+                        "highlight": True
+                    }
+                },
+                "arrow_text": "스펙 업그레이드",
+                "benefits": [best_product.get('benefits', '상세 혜택')]
+            }
 
         # [State Machine] Save Proposal for Sticky Context
         # If we just pitched something (upsell/retention), save it to STATE.
@@ -432,7 +468,8 @@ async def generate_node(state: MarketingState, config: RunnableConfig):
             "agent_script": agent_script,
             "marketing_type": result.get("marketing_type", m_type_hint),
             "generated_reasoning": reasoning,
-            "current_proposal": new_proposal_state # PERSIST to State
+            "marketing_proposal": marketing_proposal, # Persist to State
+            "current_proposal": new_proposal_state 
         }
         
     except Exception as e:
