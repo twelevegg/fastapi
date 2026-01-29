@@ -249,14 +249,19 @@ async def retrieve_node(state: MarketingState, config: RunnableConfig):
         
     q_items = session.qdrant.staged_category_search(
         query=query, 
-        final_k=6, 
+        final_k=8, 
         categories=cats, 
         cat_weights=weights
     )
     
+    # Separation: Split items into 'evidence' and 'products' based on category
+    evidence_items = [it for it in q_items if it.category != "marketing"]
+    product_items = [it for it in q_items if it.category == "marketing"]
+
     # Context Building
     from app.agent.marketing.session import build_context
-    context_text, ev_list = build_context(q_items)
+    context_text, ev_list = build_context(evidence_items)
+
     
     # [Price Constraint]
     max_price = None
@@ -281,14 +286,40 @@ async def retrieve_node(state: MarketingState, config: RunnableConfig):
             max_price = int(session.customer.monthly_fee_won * 1.1)
             print(f"--- [Marketing] Price Constraint (Buffered): Max {max_price} KRW ---")
     
-    # Product Search
-    p_items = session.product_index.search(
-        query=query, 
-        top_k=4, 
-        exclude_names=exclude_names,
-        max_price=max_price
-    )
-    p_json = [p.to_compact() for p in p_items]
+    # Product Search (Now using Qdrant 'marketing' items)
+    # Map Qdrant items to Product Candidate JSON format
+    p_json = []
+    
+    # [Price Constraint] - Filter product_items based on price (if metadata exists)
+    # Assuming metadata has 'price' or we parse it from content? 
+    # For now, let's just pass them all or do simple filtering if metadata is reliable.
+    
+    filtered_products = []
+    for it in product_items:
+        # Exclude rejected
+        name = it.metadata.get("title", "")
+        if any(ex in name for ex in exclude_names):
+            continue
+            
+        # Price check (if available in metadata)
+        # Assuming metadata["price_won"] exists or we skip check
+        price = it.metadata.get("price_won")
+        if max_price is not None and price and isinstance(price, (int, float)):
+             if price > max_price:
+                 continue
+                 
+        filtered_products.append(it)
+        
+    # Limit to top 4
+    for it in filtered_products[:4]:
+        p_json.append({
+            "product_id": it.doc_id,
+            "name": it.metadata.get("title", "Unknown"),
+            "price_text": str(it.metadata.get("price_won", "가격 정보 없음")),
+            "description": (it.page_content or "")[:200],
+            "benefits": it.metadata.get("summary", ""),
+            "url": it.metadata.get("url", "")
+        })
     
     return {
         "search_query": query,
@@ -301,6 +332,7 @@ async def retrieve_node(state: MarketingState, config: RunnableConfig):
         # State updates strictly merge. So 'product_candidates' will be new. 
         # 'current_proposal' should be updated in generate_node when we DECIDE to pitch these.
     }
+
 
 async def generate_node(state: MarketingState, config: RunnableConfig):
     """

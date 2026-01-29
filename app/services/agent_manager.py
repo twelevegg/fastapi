@@ -34,7 +34,7 @@ class AgentManager:
                 if res and res.get("next_step", "generate") != "skip":
                     yield res
                 else:
-                    print("skip되어 프론트로 안 넘어감") # 디버깅용
+                    print(f"[{res.get("agent_type")}] skip되어 프론트로 안 넘어감") # 디버깅용
             
             except Exception as e:
                 print(f"Agent execution error: {e}")

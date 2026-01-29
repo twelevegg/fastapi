@@ -108,7 +108,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         }
                         await websocket.send_json(response)
                     
-                    is_first_turn = False
+                        is_first_turn = False
                         
                         # 결과 브로드캐스트
                         await connection_manager.broadcast(response, call_id=current_session_id)

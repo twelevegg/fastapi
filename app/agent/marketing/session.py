@@ -26,58 +26,13 @@ from app.agent.marketing.prompts import (
 # Paths / files
 # -------------------------
 
-CUSTOMER_XLSX = "고객_더미데이터_50_컬럼수정_v2.xlsx"
-PRODUCT_XLSX  = "상품_데이터.xlsx"
-QDRANT_ZIP    = "qdrant-setup-main.zip"
+# -------------------------
+# Paths / files
+# -------------------------
 
-def find_in_drive(filename: str) -> Optional[str]:
-    """
-    Colab/Local 공용 파일 탐색 함수.
+# Removed Excel paths
 
-    우선순위:
-    1) DATA_DIR 환경변수 (예: <ProjectRoot>/data)
-    2) 프로젝트 루트 기준 ./data
-    3) 현재 작업 디렉토리 기준 ./data
-    4) (하위호환) Colab Drive 경로 /content/drive/MyDrive
-    """
-    roots: List[str] = []
 
-    # 1) env override
-    data_dir = (os.environ.get("DATA_DIR") or "").strip()
-    if data_dir:
-        roots.append(data_dir)
-
-    # 2) project root: src/.. = project root
-    here = os.path.dirname(os.path.abspath(__file__))          # .../app/agent/marketing
-    proj_root = os.path.abspath(os.path.join(here, "../../../.."))      # .../<ProjectRoot>
-    roots += [
-        os.path.join(proj_root, "data"),
-        proj_root,
-    ]
-
-    # 3) cwd
-    roots += [
-        os.path.join(os.getcwd(), "data"),
-        os.getcwd(),
-    ]
-
-    # 4) backward compatibility: Colab Drive
-    roots += [
-        "/content/drive/MyDrive",
-        "/content/drive/MyDrive/",
-    ]
-
-    for base in roots:
-        if not base:
-            continue
-        p = os.path.join(base, filename)
-        if os.path.isfile(p):
-            return p
-        hits = glob.glob(os.path.join(base, "**", filename), recursive=True)
-        for h in hits:
-            if os.path.isfile(h):
-                return h
-    return None
 
 
 # -------------------------
@@ -169,58 +124,53 @@ class CustomerProfile:
         }
 
 
-class CustomerDB:
-    def __init__(self, df: pd.DataFrame):
-        self.df = df.copy()
-
     @staticmethod
-    def from_excel(path: str) -> "CustomerDB":
-        df = pd.read_excel(path)
-        return CustomerDB(df)
-
-    def lookup(self, customer_id: Optional[str] = None, phone: Optional[str] = None) -> CustomerProfile:
-        df = self.df
-        row = None
-        if customer_id and "고객 ID" in df.columns:
-            hit = df[df["고객 ID"].astype(str) == str(customer_id)]
-            if len(hit) > 0:
-                row = hit.iloc[0]
-
-        if row is None and phone and "전화번호" in df.columns:
-            p = re.sub(r"\D", "", str(phone))
-            phone_norm = df["전화번호"].astype(str).apply(lambda x: re.sub(r"\D", "", x))
-            hit = df[phone_norm == p]
-            if len(hit) > 0:
-                row = hit.iloc[0]
-
-        if row is None:
-            row = df.iloc[0]
-
+    def from_dict(data: Dict[str, Any]) -> "CustomerProfile":
+        """
+        Create CustomerProfile from a dictionary (e.g. from agent API mock data)
+        """
+        # Helper for safe string conversion
+        def s(k): return safe_str(data.get(k))
+        # Helper for safe int
+        def i(k): 
+            val = data.get(k)
+            return int(val) if val and str(val).isdigit() else None
+        
+        # MAPPING: agent.py mock data keys -> CustomerProfile fields
+        # agent.py sends: {"customer_id", "name", "rate_plan", "joined_date"} usually
+        # But we might want more enriched data if possible.
+        # For now, we map what we can.
+        
         prof = CustomerProfile(
-            customer_id=safe_str(row.get("고객 ID")),
-            phone=safe_str(row.get("전화번호")),
-            subscription_type=safe_str(row.get("가입유형 (개인/법인 , 일반/알뜰폰/결합상품)")),
-            mobile_plan=safe_str(row.get("통화 / 데이터 요금제명")),
-            iptv_plan=safe_str(row.get("IPTV 상품 명")),
-            internet_plan=safe_str(row.get("인터넷 상품 명")),
-            monthly_fee_won=int(row.get("월 기본료")) if pd.notna(row.get("월 기본료")) else None,
-            contract_active=True if safe_str(row.get("약정 여부(Y/N)")).upper() == "Y" else False if safe_str(row.get("약정 여부(Y/N)")) else None,
-            contract_months=int(row.get("약정기간")) if pd.notna(row.get("약정기간")) else None,
-            contract_remaining_months=int(row.get("잔여개월")) if pd.notna(row.get("잔여개월")) else None,
-            discount_status=safe_str(row.get("할인 적용 여부(선택약정 / 가족결합 / 인터넷결합)")),
-            addons=safe_str(row.get("부가서비스 목록(데이터 옵션, 컬러링, 보험)")),
-            overage_1m=safe_str(row.get("초과 요금 발생 여부(1개월 전)")),
-            overage_2m=safe_str(row.get("초과 요금 발생 여부(2개월 전)")),
-            data_share=safe_str(row.get("데이터 이월 / 쉐어링 사용 여부")),
-            roaming_history=safe_str(row.get("해외 로밍 이력")),
-            region=safe_str(row.get("시/도 단위 거주 지역")),
-            household=safe_str(row.get("1인가구/가족 가구")),
-            remote_work=safe_str(row.get("재택 근무")),
-            segment_guess=safe_str(row.get("학생/직장인 추정")),
+            customer_id=s("customer_id"),
+            phone=s("phone") or s("contact"),
+            subscription_type=s("subscription_type"),
+            mobile_plan=s("rate_plan") or s("mobile_plan"), # Map 'rate_plan' from agent.py
+            iptv_plan=s("iptv_plan"),
+            internet_plan=s("internet_plan"),
+            monthly_fee_won=i("monthly_fee_won"),
+            contract_active=True, # Default to True for safety if unknown
+            contract_months=i("contract_months"),
+            contract_remaining_months=i("contract_remaining_months"),
+            discount_status=s("discount_status"),
+            addons=s("addons"),
+            overage_1m=s("overage_1m"),
+            overage_2m=s("overage_2m"),
+            data_share=s("data_share"),
+            roaming_history=s("roaming_history"),
+            region=s("region"),
+            household=s("household"),
+            remote_work=s("remote_work"),
+            segment_guess=s("segment_guess"),
         )
-        prof.signals = self._derive_signals(prof)
+        # Signals might be pre-calculated or needs to be derived
+        # If data doesn't have detailed fields, _derive_signals might be weak, but that's expected with mock data.
+        prof.signals = CustomerDB._derive_signals(prof)
         return prof
 
+class CustomerDB:
+    # Legacy container for helper methods
+    
     @staticmethod
     def _derive_signals(p: CustomerProfile) -> List[str]:
         s = []
@@ -269,222 +219,11 @@ class CustomerDB:
 # Product DB search (semantic + keyword)
 # -------------------------
 
-@dataclass
-class ProductItem:
-    product_id: str
-    kind: str
-    name: str
-    description: str
-    price_text: str
-    price_won: Optional[int]
-    conditions: str
-    cautions: str
-    data: str
-    share_data: str
-    voice: str
-    sms: str
-    device: str
-    benefits_discount: str
-    benefits_basic: str
-    benefits_special: str
-    soldier_benefit: str
-    extra_benefit: str
-    url: str
+# -------------------------
+# Product DB search (Legacy Removed - Now uses Qdrant filtered by category)
+# -------------------------
+# ProductSearchIndex removed
 
-    def to_compact(self) -> Dict[str, Any]:
-        return {
-            "product_id": self.product_id,
-            "kind": self.kind,
-            "name": self.name,
-            "price_text": self.price_text,
-            "price_won": self.price_won,
-            "data": self.data,
-            "share_data": self.share_data,
-            "voice": self.voice,
-            "sms": self.sms,
-            "benefits_basic": (self.benefits_basic or "")[:220],
-            "benefits_discount": (self.benefits_discount or "")[:220],
-            "benefits_special": (self.benefits_special or "")[:220],
-            "conditions": (self.conditions or "")[:180],
-            "cautions": (self.cautions or "")[:180],
-            "url": self.url,
-        }
-
-    def to_search_text(self) -> str:
-        return (
-            f"{self.kind} | {self.name} | {self.description} | 가격: {self.price_text} | "
-            f"데이터: {self.data} | 공유: {self.share_data} | 음성: {self.voice} | 문자: {self.sms} | 스마트기기: {self.device} | "
-            f"기본혜택: {self.benefits_basic} | 추가할인: {self.benefits_discount} | 특별혜택: {self.benefits_special} | "
-            f"현역병사혜택: {self.soldier_benefit} | 기타혜택: {self.extra_benefit} | "
-            f"가입조건: {self.conditions} | 유의사항: {self.cautions}"
-        )
-
-
-class ProductSearchIndex:
-    def __init__(self, items: List[ProductItem]):
-        self.items = items
-        self._emb = None
-        self._mat = None
-        self._use_semantic = False
-        # [Context Optimization] Cache names for fast lookups
-        self.all_names = {it.name for it in items}
-
-    @staticmethod
-    def from_excel(path: str) -> "ProductSearchIndex":
-        df = pd.read_excel(path)
-        items = []
-        for i, row in df.iterrows():
-            price_text = safe_str(row.get("가격"))
-            items.append(
-                ProductItem(
-                    product_id=f"PROD-{i:04d}",
-                    kind=safe_str(row.get("종류")),
-                    name=safe_str(row.get("상품명")),
-                    description=safe_str(row.get("상품 설명")),
-                    price_text=price_text,
-                    price_won=parse_first_won(price_text),
-                    conditions=safe_str(row.get("가입 조건")),
-                    cautions=safe_str(row.get("유의사항")),
-                    data=safe_str(row.get("제공 데이터")),
-                    share_data=safe_str(row.get("공유 데이터")),
-                    voice=safe_str(row.get("음성통화")),
-                    sms=safe_str(row.get("문자메시지")),
-                    device=safe_str(row.get("스마트기기")),
-                    benefits_discount=safe_str(row.get("추가 할인 혜택")),
-                    benefits_basic=safe_str(row.get("기본 혜택")),
-                    benefits_special=safe_str(row.get("특별 혜택")),
-                    soldier_benefit=safe_str(row.get("현역 병사 혜택")),
-                    extra_benefit=safe_str(row.get("기타 추가 혜택")),
-                    url=safe_str(row.get("URL")),
-                )
-            )
-        return ProductSearchIndex(items)
-
-    def build_semantic(self, model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2") -> None:
-        try:
-            self._emb = FastEmbedEmbeddings(model_name=model_name, normalize=True)
-            vecs = self._emb.embed_documents([it.to_search_text() for it in self.items])
-            mat = np.array(vecs, dtype=np.float32)
-            mat = mat / (np.linalg.norm(mat, axis=1, keepdims=True) + 1e-12)
-            self._mat = mat
-            self._use_semantic = True
-        except Exception:
-            self._use_semantic = False
-            self._emb = None
-            self._mat = None
-
-    def search(
-        self,
-        query: str,
-        top_k: int = 6,
-        strategy_hint: str = "none",
-        must_include_names: Optional[List[str]] = None,
-        exclude_names: Optional[List[str]] = None,
-        max_price: Optional[int] = None, # [NEW] Price cap
-        semantic_weight: float = 0.65,
-        keyword_weight: float = 0.35,
-    ) -> List[ProductItem]:
-        q = (query or "").strip()
-        
-        # Pre-filter candidates (Optimization)
-        candidates = self.items
-        if max_price is not None:
-            candidates = [it for it in candidates if (it.price_won is None or it.price_won <= max_price)]
-            
-        if not q:
-            # Handle exclusions even in empty query
-            if exclude_names:
-                candidates = [it for it in candidates if it.name not in exclude_names]
-            return candidates[:top_k]
-
-        qt = q.lower()
-        toks = [t for t in re.split(r"\s+", qt) if t][:12]
-        bonus = ["해지", "결합", "할인", "약정", "로밍", "무제한", "데이터", "가족", "인터넷", "IPTV"]
-
-        # keyword score
-        kw_scores = []
-        for it in candidates: # Use filtered candidates
-            text = it.to_search_text().lower()
-            hit = 0
-            for tk in toks:
-                if tk in text:
-                    hit += 1
-            for b in bonus:
-                if b in qt and b in text:
-                    hit += 1
-            kw_scores.append(hit)
-        kw = np.array(kw_scores, dtype=np.float32)
-        if kw.max() > 0:
-            kw = kw / kw.max()
-
-        # semantic score
-        # Note context: semantic search usually runs on ALL items if pre-computed matrix.
-        # But here we filtered 'candidates'. We need to map indices or just run loop.
-        # For simplicity/speed, if candidates < total, we might just re-embed or rely on keywords?
-        # Actually our scale is small (50 items). We can just filter the results after scoring.
-        # Let's revert to scoring ALL, then filtering. It's safer for matrix indices.
-        
-        # ... Revert Filter-First approach due to Matrix Index mismatch ...
-        # Let's Filter-Last.
-        
-        # keyword score (on ALL)
-        kw_scores = []
-        for it in self.items:
-             text = it.to_search_text().lower()
-             hit = 0
-             for tk in toks:
-                 if tk in text: hit += 1
-             for b in bonus:
-                 if b in qt and b in text: hit += 1
-             kw_scores.append(hit)
-        kw = np.array(kw_scores, dtype=np.float32)
-        if kw.max() > 0: kw = kw / kw.max()
-        
-        # semantic score (on ALL)
-        sem = np.zeros(len(self.items), dtype=np.float32)
-        if self._use_semantic and self._emb is not None and self._mat is not None:
-             try:
-                 qv = np.array(self._emb.embed_query(q), dtype=np.float32)
-                 qv = qv / (np.linalg.norm(qv) + 1e-12)
-                 s = self._mat @ qv
-                 sem = ((s + 1.0) / 2.0).astype(np.float32)
-             except Exception:
-                 sem = np.zeros(len(self.items), dtype=np.float32)
-
-        score = semantic_weight * sem + keyword_weight * kw
-        ranked = np.argsort(-score).tolist()
-
-        # force include current plan if provided
-        forced = []
-        if must_include_names:
-            for name in must_include_names:
-                name = (name or "").strip()
-                if not name:
-                    continue
-                for i, it in enumerate(self.items):
-                    if exclude_names and it.name in exclude_names: continue
-                    if name == it.name or (name in it.name) or (it.name in name):
-                        forced.append(i)
-
-        out, seen = [], set()
-        for i in forced + ranked:
-            if i in seen: continue
-            
-            it = self.items[i]
-            
-            # [NEW] Exclude Logic
-            if exclude_names and it.name in exclude_names: continue
-            
-            # [NEW] Price Logic
-            if max_price is not None and it.price_won is not None and it.price_won > max_price:
-                continue
-
-            seen.add(i)
-            out.append(it)
-            if len(out) >= top_k:
-                break
-
-        return out
 
 
 # -------------------------
@@ -1004,10 +743,11 @@ from .router import Gatekeeper
 from .cache import SemanticCache
 
 class MarketingSession:
-    def __init__(self, customer: CustomerProfile, product_index: ProductSearchIndex, qdrant: QdrantSearchEngine, llm: Any):
+    def __init__(self, customer: CustomerProfile, qdrant: QdrantSearchEngine, llm: Any):
         self.customer = customer
-        self.product_index = product_index
+        # self.product_index = product_index # Removed
         self.qdrant = qdrant
+
         self.llm = llm
         
         # [NEW] Gatekeeper & Cache
@@ -1078,10 +818,12 @@ class MarketingSession:
                 if t.transcript: 
                     last_turn_text += " " + t.transcript
         
-        if self.product_index and hasattr(self.product_index, "all_names"):
-             for name in self.product_index.all_names:
-                 if name in last_turn_text:
-                     recent_mentions.append(name)
+        # Product Index Removed
+        # if self.product_index and hasattr(self.product_index, "all_names"):
+        #      for name in self.product_index.all_names:
+        #          if name in last_turn_text:
+        #              recent_mentions.append(name)
+
         
         kws = []
         for k in ["해지", "위약금", "약정", "결합", "가족결합", "재결합", "요금제", "변경", "할인", "혜택", "동의", "개인정보", "인터넷", "IPTV"]:
@@ -1181,20 +923,20 @@ def build_qdrant_client_from_env() -> QdrantClient:
         raise RuntimeError("QDRANT_URL/QDRANT_API_KEY env not set")
     return QdrantClient(url=url, api_key=key)
 
-def build_session(customer_id: Optional[str] = None, phone: Optional[str] = None) -> MarketingSession:
-    cpath = find_in_drive(CUSTOMER_XLSX)
-    ppath = find_in_drive(PRODUCT_XLSX)
-    if not cpath:
-        raise FileNotFoundError(f"Missing in Drive: {CUSTOMER_XLSX}")
-    if not ppath:
-        raise FileNotFoundError(f"Missing in Drive: {PRODUCT_XLSX}")
+def build_session(customer_id: Optional[str] = None, phone: Optional[str] = None, customer_info: Optional[Dict[str, Any]] = None) -> MarketingSession:
+    # 1. Mock Customer Data
+    if customer_info:
+        customer = CustomerProfile.from_dict(customer_info)
+    else:
+        # Fallback to default mock if no info provided
+        customer = CustomerProfile.from_dict({
+            "customer_id": customer_id or "UNKNOWN", 
+            "phone": phone, 
+            "rate_plan": "Unknown Plan",
+            "monthly_fee_won": 50000
+        })
 
-    cust_db = CustomerDB.from_excel(cpath)
-    customer = cust_db.lookup(customer_id=customer_id, phone=phone)
-
-    prod = ProductSearchIndex.from_excel(ppath)
-    prod.build_semantic()
-
+    # 2. Vector DB (Qdrant)
     client = build_qdrant_client_from_env()
 
     # verify collection exists (read-only)
@@ -1204,7 +946,7 @@ def build_session(customer_id: Optional[str] = None, phone: Optional[str] = None
 
     qengine = QdrantSearchEngine(client=client, collection="cs_guideline", vector_name="dense", sparse_vector_name="sparse", category_key="metadata.category")
 
-    # LLM optional
+    # 3. LLM optional
     # LLM initialization (Debug Mode: Don't swallow errors)
     try:
         llm = OpenAICompatibleLLM()
@@ -1213,4 +955,4 @@ def build_session(customer_id: Optional[str] = None, phone: Optional[str] = None
         print("[Session] Falling back to MockLLM (No response generation)")
         llm = MockLLM()
 
-    return MarketingSession(customer=customer, product_index=prod, qdrant=qengine, llm=llm)
+    return MarketingSession(customer=customer, qdrant=qengine, llm=llm)

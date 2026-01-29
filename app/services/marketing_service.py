@@ -36,7 +36,7 @@ async def handle_marketing_message(turn: dict, session_id: str, customer_info: d
              phone = customer_info.get("phone")
         
         try:
-             _sessions[session_id] = build_session(customer_id=customer_id, phone=phone)
+             _sessions[session_id] = build_session(customer_id=customer_id, phone=phone, customer_info=customer_info)
         except Exception as e:
             print(f"[MarketingService] Session creation failed: {e}")
             return {"next_step": "skip", "reasoning": "Session init failed"}
@@ -81,17 +81,12 @@ async def handle_marketing_message(turn: dict, session_id: str, customer_info: d
         # But 'marketing_opportunity' should cover these if router.py is good.
         
         if not is_opportunity:
-            # [Veteran Mode Upgrade]
-            # Don't skip immediately. Let the Graph's "Deep Analysis" decide.
-            # Only skip if explicit 'safe' check failed earlier (which is handled by router but let's double check)
-            # Actually, let's trust the router's "marketing_opportunity" logic IS the problem.
-            # We will pass it to the graph, but maybe we can flag it.
-            print("[MarketingService] Sniper Mode: No obvious trigger, but proceeding to Deep Analysis (Veteran Mode)")
-            # return {
-            #     "next_step": "skip", 
-            #     "reasoning": "Sniper: No marketing opportunity",
-            #     "agent_type": "marketing"
-            # }
+             print(f"[MarketingService] Sniper Mode: No marketing opportunity detected (Intent: {route_result.get('intent')}). Skipping.")
+             return {
+                 "next_step": "skip", 
+                 "reasoning": "Sniper: No marketing opportunity",
+                 "agent_type": "marketing"
+             }
 
         # 3. If Active, Proceed to Graph
         graph_config = {
