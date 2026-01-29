@@ -10,3 +10,13 @@ langchain-qdrant
 langchain-community
 qdrant-client
 fastembed
+
+langchain-openai
+langchain-text-splitters
+chromadb
+moviepy==1.0.3
+gTTS
+Pillow
+python-pptx
+pypdf
+python-multipart

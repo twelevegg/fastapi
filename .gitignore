@@ -208,3 +208,12 @@ __marimo__/
 
 # Mac OS Canned Search
 *.cannedSearch
+
+
+# education relationed ignores
+*.mp4
+*.mp3
+*.pptx
+*.json
+*.png
+*.pdf
