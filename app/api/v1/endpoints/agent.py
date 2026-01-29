@@ -8,6 +8,7 @@ from app.services.guidance_service import handle_guidance_message
 from app.services.marketing_service import handle_marketing_message
 from app.services.agent_manager import agent_manager
 from app.services.connection_manager import connection_manager
+from app.services.notification_manager import notification_manager
 
 # 에이전트 등록 (서버 시작 시 또는 모듈 로드 시)
 agent_manager.register_agent(handle_guidance_message)
@@ -27,6 +28,17 @@ async def monitor_endpoint(websocket: WebSocket, call_id: str):
         connection_manager.disconnect(websocket, call_id)
         print(f"Monitor client disconnected from {call_id}")
 
+@router.websocket("/notifications/{user_id}")
+async def notification_endpoint(websocket: WebSocket, user_id: str):
+    await notification_manager.connect(websocket, user_id)
+    try:
+        while True:
+            # Keep connection alive (heartbeat)
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        notification_manager.disconnect(websocket, user_id)
+        print(f"Notification client {user_id} disconnected")
+
 @router.websocket("/check")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -43,7 +55,8 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_json()
             
             # 1. Metadata Handling
-            if "callId" in data:
+            # 1. Metadata Handling
+            if "callId" in data and "transcript" not in data:
                 # 메타데이터에 callId가 있으면 이를 세션 ID로 사용
                 current_session_id = data["callId"]
                 print(f"Call metadata received: {current_session_id}")
@@ -57,6 +70,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     "type": "metadata_update",
                     "data": response_metadata
                 }, call_id=current_session_id)
+                
+                # [NEW] 전체 유저(또는 특정 유저)에게 "새로운 통화 시작됨" 알림 전송
+                # 실제로는 담당자 배정 로직에 따라 특정 유저에게만 보낼 수도 있음
+                await notification_manager.broadcast({
+                    "type": "CALL_STARTED",
+                    "callId": current_session_id,
+                    "customer_info": customer_info # 필요하다면 포함
+                })
+                
                 continue
             
             # 2. Turn (Conversation turn)
@@ -115,6 +137,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         
                         print("웹소켓으로 전송 완료", response) # 디버깅용
                         
+                except WebSocketDisconnect:
+                    raise
                 except Exception as e:
                     print(f"Error processing turn: {e}")
                     await websocket.send_json({"status": "error", "message": str(e)})
@@ -126,20 +150,8 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         print(f"Client disconnected (Session: {current_session_id})")
         
-        # [DEBUG] 통화 종료 시 전체 대화 내용 출력
-        try:
-            config = {"configurable": {"thread_id": current_session_id}}
-            end_state = await graph.get_state(config)
-            print(f"\n[FINAL REPORT] Full Conversation History (Session: {current_session_id}):")
-            if end_state and end_state.values:
-                for idx, msg in enumerate(end_state.values.get("message", [])):
-                    print(f" {idx + 1}. [{msg.type}] {msg.content}")
-            else:
-                 print(" - No messages recorded.")
-            print("-" * 50)
-        except Exception as e:
-            print(f"Error retrieving final state: {e}")
-        # 디버깅 용이라 나중에 삭제할 것===============================================
+        # [DEBUG] Client disconnected
+        pass
         
     except json.JSONDecodeError:
         print("Received non-JSON data")

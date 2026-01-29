@@ -27,8 +27,13 @@ from app.agent.marketing.prompts import (
 
 def mask_pii(text: str) -> str:
     if not text:
-        return text
-    t = text
+        return ""
+        
+    # [Patch] Handle Dict (Structured Agent Script)
+    if isinstance(text, dict):
+        text = text.get("ment") or text.get("recommendation") or str(text)
+        
+    t = str(text) # Ensure string
     t = re.sub(r"\b01[0-9][- ]?\d{3,4}[- ]?\d{4}\b", "<PHONE>", t)
     t = re.sub(r"\b\d{6,}\b", "<NUM>", t)
     t = re.sub(r"([가-힣]{1,10}(?:로|길)\s*\d+(?:[가-힣0-9\s\-]*)?)", "<ADDRESS>", t)
