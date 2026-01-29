@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 
 import numpy as np
-import pandas as pd
+
 import httpx
 
 from qdrant_client import QdrantClient, models
@@ -20,20 +20,6 @@ from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from app.agent.marketing.prompts import (
     BASE_SYSTEM, STRATEGY_UPSELL, STRATEGY_RETENTION, STRATEGY_DEFAULT
 )
-
-
-# -------------------------
-# Paths / files
-# -------------------------
-
-# -------------------------
-# Paths / files
-# -------------------------
-
-# Removed Excel paths
-
-
-
 
 # -------------------------
 # Safety: PII masking
@@ -52,10 +38,12 @@ def mask_pii(text: str) -> str:
     t = re.sub(r"([가-힣]{2,4})\s*고객님", r"<NAME> 고객님", t)
     return t
 
+import math
+
 def safe_str(x: Any) -> str:
     if x is None:
         return ""
-    if isinstance(x, float) and pd.isna(x):
+    if isinstance(x, float) and math.isnan(x):
         return ""
     return str(x)
 
@@ -213,18 +201,6 @@ class CustomerDB:
             s.append("데이터 쉐어링 이용(멀티 디바이스 유저 -> 워치/태블릿 결합 제안)")
             
         return s
-
-
-# -------------------------
-# Product DB search (semantic + keyword)
-# -------------------------
-
-# -------------------------
-# Product DB search (Legacy Removed - Now uses Qdrant filtered by category)
-# -------------------------
-# ProductSearchIndex removed
-
-
 
 # -------------------------
 # Qdrant retrieval (semantic + keyword + hybrid + staged category)
