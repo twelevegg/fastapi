@@ -36,7 +36,7 @@ async def handle_marketing_message(turn: dict, session_id: str, customer_info: d
              phone = customer_info.get("phone")
         
         try:
-             _sessions[session_id] = build_session(customer_id=customer_id, phone=phone)
+             _sessions[session_id] = build_session(customer_id=customer_id, phone=phone, customer_info=customer_info)
         except Exception as e:
             print(f"[MarketingService] Session creation failed: {e}")
             return {"next_step": "skip", "reasoning": "Session init failed"}
@@ -81,17 +81,12 @@ async def handle_marketing_message(turn: dict, session_id: str, customer_info: d
         # But 'marketing_opportunity' should cover these if router.py is good.
         
         if not is_opportunity:
-            # [Veteran Mode Upgrade]
-            # Don't skip immediately. Let the Graph's "Deep Analysis" decide.
-            # Only skip if explicit 'safe' check failed earlier (which is handled by router but let's double check)
-            # Actually, let's trust the router's "marketing_opportunity" logic IS the problem.
-            # We will pass it to the graph, but maybe we can flag it.
-            print("[MarketingService] Sniper Mode: No obvious trigger, but proceeding to Deep Analysis (Veteran Mode)")
-            # return {
-            #     "next_step": "skip", 
-            #     "reasoning": "Sniper: No marketing opportunity",
-            #     "agent_type": "marketing"
-            # }
+             print(f"[MarketingService] Sniper Mode: No marketing opportunity detected (Intent: {route_result.get('intent')}). Skipping.")
+             return {
+                 "next_step": "skip", 
+                 "reasoning": "Sniper: No marketing opportunity",
+                 "agent_type": "marketing"
+             }
 
         # 3. If Active, Proceed to Graph
         graph_config = {
@@ -121,16 +116,30 @@ async def handle_marketing_message(turn: dict, session_id: str, customer_info: d
         marketing_needed = final_state.get("marketing_needed", False)
         marketing_type = final_state.get("marketing_type", "none")
         agent_script = final_state.get("agent_script", "")
+        marketing_proposal = final_state.get("marketing_proposal") # Extract from State
         
         # Update Session History with Agent Response (for next turn context)
         if agent_script:
             session.add_turn(speaker="agent", transcript=agent_script)
             
+        # [Localized Guide]
+        type_map = {
+            "upsell": "업셀링",
+            "retention": "해지방어",
+            "retention_price": "가격방어",
+            "cost_optimization": "요금절감",
+            "explanation": "상세설명",
+            "alternative": "대안제시"
+        }
+        k_type = type_map.get(marketing_type, marketing_type)
+        k_needed = "O" if marketing_needed else "X"
+
         return {
             "agent_type": "marketing",
             "next_step": "generate" if agent_script else "skip",
             "recommended_answer": agent_script,
-            "work_guide": f"Marketing Type: {marketing_type} (Needed: {marketing_needed})",
+            "marketing_proposal": marketing_proposal, # Pass to API/Frontend
+            "work_guide": f"전략: {k_type} (제안: {k_needed})",
             # "full_result": final_state # Optional
         }
             

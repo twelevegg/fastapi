@@ -39,7 +39,7 @@ async def analyze_messages_node(state: AgentState):
 
   try:
     result = await chain.ainvoke({"messages":last_messages})
-    print(f"{result["next_step"]}, {result["reasoning"]} ==========")
+    print(f"{result['next_step']}, {result['reasoning']} ==========")
     return {
         **state,
         "reasoning": result["reasoning"],
@@ -141,13 +141,13 @@ async def generate_node(state: AgentState):
 
   # LLM 호출
   result = await chain.ainvoke({
-      "customer_info": state["customer_info"],
-      "context": state.get("context", "관련 정보 없음"),
+      "customer_info": state.get("customer_info", {}),
+      "context": state.get("context", ""),
       "last_messages": last_messages
   })
 
-  print(f"{result["recommended_answer"][:40]}... ==========")
-  print(f"{result["work_guide"][:40]}... ==========")
+  print(f"{result['recommended_answer'][:40]}... ==========")
+  print(f"{result['work_guide'][:40]}... ==========")
 
   return {
       **state,

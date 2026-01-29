@@ -136,7 +136,8 @@ class Gatekeeper:
                 f"1. [SOLVER] If complaint is about 'Price', 'Data Cap', or 'Slow Speed' (that can be fixed by plan upgrade) -> SET 'marketing_opportunity': true.\n"
                 f"2. [RESOLUTION] If customer says 'Fixed', 'Thanks', ' Solved' -> SET 'marketing_opportunity': true (Post-resolution Offer).\n"
                 f"3. [SKIP] If problem is purely technical (Device broken, No Signal, WiFi setting, Login failed) AND not resolved yet -> SET 'marketing_opportunity': false.\n"
-                f"4. [SKIP] If customer is FURIOUS -> SET 'marketing_opportunity': false."
+                f"4. [SKIP] If customer is FURIOUS -> SET 'marketing_opportunity': false.\n"
+                f"5. [INQUIRY] If customer asks about 'Plans', 'Discounts', 'Benefits', 'Join' (가입, 결합, 할인) -> SET 'marketing_opportunity': true."
             )
             print("[Router] 🚀 Sending request to gpt-4o-mini...")
             import time

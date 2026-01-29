@@ -18,7 +18,16 @@ def build_marketing_graph():
 
     workflow.set_entry_point("analyze")
     
-    workflow.add_edge("analyze", "retrieve") # Simplified for now, usually conditional
+    # [Optimization] Conditional Edge: Skip Retrieve if not needed
+    workflow.add_conditional_edges(
+        "analyze",
+        is_marketing_needed,
+        {
+            "retrieve": "retrieve",
+            "generate": "generate"
+        }
+    )
+    # workflow.add_edge("analyze", "retrieve") 
     workflow.add_edge("retrieve", "generate")
     workflow.add_edge("generate", END)
 

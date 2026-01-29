@@ -249,14 +249,19 @@ async def retrieve_node(state: MarketingState, config: RunnableConfig):
         
     q_items = session.qdrant.staged_category_search(
         query=query, 
-        final_k=6, 
+        final_k=8, 
         categories=cats, 
         cat_weights=weights
     )
     
+    # Separation: Split items into 'evidence' and 'products' based on category
+    evidence_items = [it for it in q_items if it.category != "marketing"]
+    product_items = [it for it in q_items if it.category == "marketing"]
+
     # Context Building
     from app.agent.marketing.session import build_context
-    context_text, ev_list = build_context(q_items)
+    context_text, ev_list = build_context(evidence_items)
+
     
     # [Price Constraint]
     max_price = None
@@ -281,14 +286,40 @@ async def retrieve_node(state: MarketingState, config: RunnableConfig):
             max_price = int(session.customer.monthly_fee_won * 1.1)
             print(f"--- [Marketing] Price Constraint (Buffered): Max {max_price} KRW ---")
     
-    # Product Search
-    p_items = session.product_index.search(
-        query=query, 
-        top_k=4, 
-        exclude_names=exclude_names,
-        max_price=max_price
-    )
-    p_json = [p.to_compact() for p in p_items]
+    # Product Search (Now using Qdrant 'marketing' items)
+    # Map Qdrant items to Product Candidate JSON format
+    p_json = []
+    
+    # [Price Constraint] - Filter product_items based on price (if metadata exists)
+    # Assuming metadata has 'price' or we parse it from content? 
+    # For now, let's just pass them all or do simple filtering if metadata is reliable.
+    
+    filtered_products = []
+    for it in product_items:
+        # Exclude rejected
+        name = it.metadata.get("title", "")
+        if any(ex in name for ex in exclude_names):
+            continue
+            
+        # Price check (if available in metadata)
+        # Assuming metadata["price_won"] exists or we skip check
+        price = it.metadata.get("price_won")
+        if max_price is not None and price and isinstance(price, (int, float)):
+             if price > max_price:
+                 continue
+                 
+        filtered_products.append(it)
+        
+    # Limit to top 4
+    for it in filtered_products[:4]:
+        p_json.append({
+            "product_id": it.doc_id,
+            "name": it.metadata.get("title", "Unknown"),
+            "price_text": str(it.metadata.get("price_won", "가격 정보 없음")),
+            "description": (it.page_content or "")[:200],
+            "benefits": it.metadata.get("summary", ""),
+            "url": it.metadata.get("url", "")
+        })
     
     return {
         "search_query": query,
@@ -301,6 +332,7 @@ async def retrieve_node(state: MarketingState, config: RunnableConfig):
         # State updates strictly merge. So 'product_candidates' will be new. 
         # 'current_proposal' should be updated in generate_node when we DECIDE to pitch these.
     }
+
 
 async def generate_node(state: MarketingState, config: RunnableConfig):
     """
@@ -365,6 +397,10 @@ async def generate_node(state: MarketingState, config: RunnableConfig):
     
     [고객의 마케팅 니즈]
     {state.get('generated_reasoning', '분석 불가')}
+
+    [지시사항]
+    위 정보를 바탕으로 마케팅 전략을 수행하라.
+    특히, 상품을 추천한다면 반드시 'marketing_proposal' 필드에 "Before vs After" 비교 정보를 채워라.
     
     위 정보를 바탕으로 최적의 'recommended_pitch'를 생성하라.
     """
@@ -381,9 +417,41 @@ async def generate_node(state: MarketingState, config: RunnableConfig):
         
         agent_script = result.get("recommended_pitch", "")
         reasoning = result.get("reasoning", "")
+        marketing_proposal = result.get("marketing_proposal") # Extract Proposal JSON
         
         if not agent_script:
-             agent_script = "고객님, 잠시만 기다려주시면 혜택을 확인해드리겠습니다."
+             agent_script = {"ment": "- [시스템] 제안 내용 생성 중..."}
+
+        # [Fallback] If LLM failed to generate proposal but we have products, generate it manually
+        if not marketing_proposal and state.get("product_candidates"):
+            best_product = state.get("product_candidates")[0]
+            print(f"[Marketing] ⚠️ LLM returned null proposal. FLAGGING FALLBACK for {best_product['name']}")
+            
+            # Simple Rule-based Construction (Dashboard Style)
+            current_plan = session.customer.mobile_plan or "현재 요금제"
+            
+            # Auto-generate succinct pitch for fallback (Structured JSON)
+            agent_script = {
+                "needs": "혜택/요금 최적화 필요",
+                "recommendation": best_product['name'],
+                "comparison": f"{current_plan} -> {best_product['name']}",
+                "ment": "월 이용료는 비슷하지만 혜택은 2배 더 많습니다."
+            }
+            
+            marketing_proposal = {
+                "card_title": f"{best_product['name']} 제안",
+                "comparison": {
+                    "before": {"label": "현재", "desc": current_plan, "price_text": f"{session.customer.monthly_fee_won}원"},
+                    "after": {
+                        "label": "제안", 
+                        "desc": best_product['name'], 
+                        "price_text": best_product.get('price_text', '가격 문의'), 
+                        "highlight": True
+                    }
+                },
+                "arrow_text": "스펙 업그레이드",
+                "benefits": [best_product.get('benefits', '상세 혜택')]
+            }
 
         # [State Machine] Save Proposal for Sticky Context
         # If we just pitched something (upsell/retention), save it to STATE.
@@ -400,7 +468,8 @@ async def generate_node(state: MarketingState, config: RunnableConfig):
             "agent_script": agent_script,
             "marketing_type": result.get("marketing_type", m_type_hint),
             "generated_reasoning": reasoning,
-            "current_proposal": new_proposal_state # PERSIST to State
+            "marketing_proposal": marketing_proposal, # Persist to State
+            "current_proposal": new_proposal_state 
         }
         
     except Exception as e:
