@@ -5,7 +5,8 @@ import uuid
 import random
 
 async def simulate_call():
-    uri = "ws://13.209.17.129:8000/api/v1/agent/check"
+    # uri = "ws://13.209.17.129:8000/api/v1/agent/check"
+    uri = "ws://localhost:8000/api/v1/agent/check"
     
     try:
         async with websockets.connect(uri) as websocket:
@@ -15,6 +16,7 @@ async def simulate_call():
             call_id = f"call-{uuid.uuid4().hex[:8]}"
             metadata = {
                 "callId": call_id, 
+                "customer_number": "010-1234-5678", # [NEW] Spring 조회용 번호
                 "customer_info": {
                     "customer_id": "CUST-999", 
                     "name": "홍길동 (테스트)", 
