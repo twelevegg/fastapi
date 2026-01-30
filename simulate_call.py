@@ -5,7 +5,7 @@ import uuid
 import random
 
 async def simulate_call():
-    uri = "ws://localhost:8000/api/v1/agent/check"
+    uri = "ws://13.209.17.129:8000/api/v1/agent/check"
     
     try:
         async with websockets.connect(uri) as websocket:
