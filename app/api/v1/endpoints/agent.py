@@ -55,8 +55,29 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         while True:
-            # 클라이언트로부터 JSON 데이터 수신
-            data = await websocket.receive_json()
+            message = await websocket.receive()
+            message_type = message.get("type")
+            raw_text = message.get("text")
+            raw_bytes = message.get("bytes")
+
+            if raw_text is not None:
+                print(f"WS payload (session: {current_session_id}): {raw_text}")
+                try:
+                    data = json.loads(raw_text)
+                except json.JSONDecodeError:
+                    print("Received non-JSON data")
+                    await websocket.close(code=1003)
+                    break
+            elif raw_bytes is not None:
+                print(f"WS binary payload (session: {current_session_id}): {len(raw_bytes)} bytes")
+                print("Received non-JSON data")
+                await websocket.close(code=1003)
+                break
+            elif message_type == "websocket.disconnect":
+                raise WebSocketDisconnect
+            else:
+                print(f"WS unexpected message (session: {current_session_id}): {message}")
+                continue
             
             # 1. Metadata Handling
             if "callId" in data and "transcript" not in data:
@@ -82,6 +103,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     print("No customer_number provided in metadata.")
                 
                 response_metadata = {"status": "received", "type": "metadata", "callId": current_session_id}
+                print(f"WS response (session: {current_session_id}): {response_metadata}")
                 await websocket.send_json(response_metadata)
                 
                 
@@ -106,6 +128,18 @@ async def websocket_endpoint(websocket: WebSocket):
                 transcript = data["transcript"]
                 speaker = data["speaker"]
                 turn_id = data.get("turn_id")
+
+                print(f"Processing turn before {turn_id}: '{speaker}' {transcript}")
+
+                await websocket.send_json({
+                    "type": "transcript_update",
+                    "data": {
+                        "speaker": speaker,
+                        "transcript": transcript,
+                        "turn_id": turn_id,
+                        "session_id": current_session_id
+                    }
+                })
                 
                 if not transcript or not speaker:
                     continue
@@ -151,6 +185,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "turn_id": turn_id,
                             "results": result 
                         }
+                        print(f"WS response (session: {current_session_id}): {response}")
                         await websocket.send_json(response)
                     
                         is_first_turn = False
@@ -164,7 +199,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     raise
                 except Exception as e:
                     print(f"Error processing turn: {e}")
-                    await websocket.send_json({"status": "error", "message": str(e)})
+                    error_response = {"status": "error", "message": str(e)}
+                    print(f"WS response (session: {current_session_id}): {error_response}")
+                    await websocket.send_json(error_response)
             
             else:
                  # 알 수 없는 데이터 구조는 로그만 남기고 스킵

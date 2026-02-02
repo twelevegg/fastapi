@@ -1,0 +1,29 @@
+version: 0.2
+
+env:
+  variables:
+    AWS_REGION: ap-northeast-2
+    ECR_REGISTRY: 081338828582.dkr.ecr.ap-northeast-2.amazonaws.com
+    ECR_REPO_URI: 081338828582.dkr.ecr.ap-northeast-2.amazonaws.com/aicc-fastapi
+
+phases:
+  install:
+    commands:
+      - curl -sSL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+      - chmod +x /usr/local/bin/kubectl
+  pre_build:
+    commands:
+      - aws --version
+      - IMAGE_TAG=$(echo "$CODEBUILD_RESOLVED_SOURCE_VERSION" | cut -c 1-7)
+      - aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+  build:
+    commands:
+      - docker build -t "$ECR_REPO_URI:$IMAGE_TAG" .
+      - docker tag "$ECR_REPO_URI:$IMAGE_TAG" "$ECR_REPO_URI:latest"
+  post_build:
+    commands:
+      - docker push "$ECR_REPO_URI:$IMAGE_TAG"
+      - docker push "$ECR_REPO_URI:latest"
+      - aws eks update-kubeconfig --name aicc-eks --region "$AWS_REGION"
+      - kubectl set image deployment/aicc-fastapi aicc-fastapi="$ECR_REPO_URI:$IMAGE_TAG"
+      - kubectl rollout status deployment/aicc-fastapi
