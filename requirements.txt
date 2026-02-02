@@ -1,4 +1,4 @@
-# python version 3.12.3
+# python version 3.13.x
 
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.3

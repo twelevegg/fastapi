@@ -51,3 +51,4 @@ class OpenAIService:
         )
 
 openai_service = OpenAIService()
+

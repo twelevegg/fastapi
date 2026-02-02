@@ -136,9 +136,9 @@ class CustomerProfile:
         
         prof = CustomerProfile(
             customer_id=s("customer_id"),
-            phone=s("phone") or s("contact"),
+            phone=s("phone") or s("contact") or s("phone_number"),
             subscription_type=s("subscription_type"),
-            mobile_plan=s("rate_plan") or s("mobile_plan"), # Map 'rate_plan' from agent.py
+            mobile_plan=s("rate_plan") or s("mobile_plan") or s("요금제명"), # Map 'rate_plan' from agent.py
             iptv_plan=s("iptv_plan"),
             internet_plan=s("internet_plan"),
             monthly_fee_won=i("monthly_fee_won"),

@@ -9,6 +9,8 @@ from app.services.marketing_service import handle_marketing_message
 from app.services.agent_manager import agent_manager
 from app.services.connection_manager import connection_manager
 from app.services.notification_manager import notification_manager
+from app.services.spring_connector import spring_connector
+from app.services.analysis_service import analysis_service
 
 # 에이전트 등록 (서버 시작 시 또는 모듈 로드 시)
 agent_manager.register_agent(handle_guidance_message)
@@ -48,6 +50,8 @@ async def websocket_endpoint(websocket: WebSocket):
     # 고객 정보 (예시) - 실제로는 DB에서 조회 - 지금은 Mock데이터임
     customer_info = {"customer_id": "CUST-0001", "name": "김토스", "rate_plan": "유쓰 5G 심플+", "joined_date": "2023-05-20"}
     is_first_turn = True
+    customer_number = None 
+    conversation_history = [] # [NEW] Initialize history list
 
     try:
         while True:
@@ -76,11 +80,27 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
             
             # 1. Metadata Handling
-            # 1. Metadata Handling
             if "callId" in data and "transcript" not in data:
                 # 메타데이터에 callId가 있으면 이를 세션 ID로 사용
                 current_session_id = data["callId"]
                 print(f"Call metadata received: {current_session_id}")
+
+                # [NEW] 고객 정보 조회 (Spring)
+                customer_number = data.get("customer_number")
+                if customer_number:
+                     print(f"Fetching info for customer: {customer_number}")
+                     fetched_info = await spring_connector.get_customer_info(customer_number)
+                     if fetched_info:
+                         # Pydantic 모델을 dict로 변환 (alias=True 옵션으로 한국어 키로 변환 가능하지만,
+                         # 내부 로직에서는 영문 키를 사용하는 것이 일반적.
+                         # 하지만 프론트엔드가 뭘 기대하느냐에 따라 다름.
+                         # 일단 model_dump()로 변환해서 저장.
+                         customer_info = fetched_info.model_dump()
+                         print(f"Customer info loaded: {customer_info.get('name')}")
+                     else:
+                         print("Customer info fetch failed or not found.")
+                else:
+                    print("No customer_number provided in metadata.")
                 
                 response_metadata = {"status": "received", "type": "metadata", "callId": current_session_id}
                 print(f"WS response (session: {current_session_id}): {response_metadata}")
@@ -124,7 +144,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not transcript or not speaker:
                     continue
                     
-                print(f"Processing turn after {turn_id}: '{speaker}' {transcript}")
+                # 대화 기록에 추가
+                conversation_history.append({"speaker": speaker, "transcript": transcript})
+                
+                print(f"Processing turn {turn_id}: '{speaker}' {transcript}")
                 
                 # STT 수신 내용 브로드캐스트
                 await connection_manager.broadcast({
@@ -188,7 +211,40 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"Client disconnected (Session: {current_session_id})")
         
         # [DEBUG] Client disconnected
-        pass
+        
+        # [NEW] 통화 종료 시 종합 분석 및 Spring 전송 로직
+        if conversation_history:
+            print(f"Call {current_session_id} ended. Generating comprehensive analysis...")
+            
+            # 1. 종합 분석 생성
+            try:
+                # analysis_service를 통해 분석 수행
+                analysis_result = await analysis_service.analyze_conversation(conversation_history)
+                print(f"Analysis complete: {analysis_result.summary_text[:50]}...")
+                
+                # 2. Spring 서버로 데이터 전송
+                payload = {
+                    # CallAnalysisResult 모델의 필드를 dict로 변환 (model_dump 사용 가능)
+                    "transcripts": conversation_history, # 상담 전문
+                    "summary_text": analysis_result.summary_text,
+                    "estimated_cost": analysis_result.estimated_cost,
+                    "ces_score": analysis_result.ces_score,
+                    "csat_score": analysis_result.csat_score,
+                    "rps_score": analysis_result.rps_score,
+                    "keyword": analysis_result.keyword,
+                    "violence_count": analysis_result.violence_count,
+                    "customer_number": customer_number # [NEW] 고객 전화번호 추가
+                    # 필요하다면 추가 정보
+                    # "callId": current_session_id,
+                    # "customerInfo": customer_info
+                }
+                
+                # 비동기 전송
+                await spring_connector.send_call_data(payload)
+                
+            except Exception as e:
+                print(f"Error during call end processing: {e}")
+
         
     except json.JSONDecodeError:
         print("Received non-JSON data")

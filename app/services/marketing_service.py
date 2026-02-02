@@ -33,7 +33,7 @@ async def handle_marketing_message(turn: dict, session_id: str, customer_info: d
         phone = None
         if customer_info:
              customer_id = customer_info.get("customer_id")
-             phone = customer_info.get("phone")
+             phone = customer_info.get("phone_number")
         
         try:
              _sessions[session_id] = build_session(customer_id=customer_id, phone=phone, customer_info=customer_info)
