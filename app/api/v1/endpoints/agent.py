@@ -83,6 +83,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 print(f"Call metadata received: {current_session_id}")
                 
                 response_metadata = {"status": "received", "type": "metadata", "callId": current_session_id}
+                print(f"WS response (session: {current_session_id}): {response_metadata}")
                 await websocket.send_json(response_metadata)
                 
                 
@@ -149,6 +150,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "turn_id": turn_id,
                             "results": result 
                         }
+                        print(f"WS response (session: {current_session_id}): {response}")
                         await websocket.send_json(response)
                     
                         is_first_turn = False
@@ -162,7 +164,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     raise
                 except Exception as e:
                     print(f"Error processing turn: {e}")
-                    await websocket.send_json({"status": "error", "message": str(e)})
+                    error_response = {"status": "error", "message": str(e)}
+                    print(f"WS response (session: {current_session_id}): {error_response}")
+                    await websocket.send_json(error_response)
             
             else:
                  # 알 수 없는 데이터 구조는 로그만 남기고 스킵
