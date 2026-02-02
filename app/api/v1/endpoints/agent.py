@@ -172,6 +172,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     info_to_send = customer_info if is_first_turn else None
                     
                     is_first_turn = False
+
+                    await websocket.send_json({
+                        "type": "agent_update",
+                        "data": {
+                            "agent": "agent",
+                            "agent_transcript": transcript,
+                            "turn_id": turn_id,
+                            "session_id": current_session_id
+                        }
+                    })
                     
                     async for result in agent_manager.process_turn(
                         turn=turn_data,
