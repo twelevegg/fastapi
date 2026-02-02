@@ -51,8 +51,29 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         while True:
-            # 클라이언트로부터 JSON 데이터 수신
-            data = await websocket.receive_json()
+            message = await websocket.receive()
+            message_type = message.get("type")
+            raw_text = message.get("text")
+            raw_bytes = message.get("bytes")
+
+            if raw_text is not None:
+                print(f"WS payload (session: {current_session_id}): {raw_text}")
+                try:
+                    data = json.loads(raw_text)
+                except json.JSONDecodeError:
+                    print("Received non-JSON data")
+                    await websocket.close(code=1003)
+                    break
+            elif raw_bytes is not None:
+                print(f"WS binary payload (session: {current_session_id}): {len(raw_bytes)} bytes")
+                print("Received non-JSON data")
+                await websocket.close(code=1003)
+                break
+            elif message_type == "websocket.disconnect":
+                raise WebSocketDisconnect
+            else:
+                print(f"WS unexpected message (session: {current_session_id}): {message}")
+                continue
             
             # 1. Metadata Handling
             # 1. Metadata Handling
