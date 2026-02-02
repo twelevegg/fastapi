@@ -110,6 +110,16 @@ async def websocket_endpoint(websocket: WebSocket):
                 turn_id = data.get("turn_id")
 
                 print(f"Processing turn before {turn_id}: '{speaker}' {transcript}")
+
+                await websocket.send_json({
+                    "type": "transcript_update",
+                    "data": {
+                        "speaker": speaker,
+                        "transcript": transcript,
+                        "turn_id": turn_id,
+                        "session_id": current_session_id
+                    }
+                })
                 
                 if not transcript or not speaker:
                     continue
