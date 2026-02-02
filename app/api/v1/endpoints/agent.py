@@ -108,11 +108,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 transcript = data["transcript"]
                 speaker = data["speaker"]
                 turn_id = data.get("turn_id")
+
+                print(f"Processing turn before {turn_id}: '{speaker}' {transcript}")
                 
                 if not transcript or not speaker:
                     continue
                     
-                print(f"Processing turn {turn_id}: '{speaker}' {transcript}")
+                print(f"Processing turn after {turn_id}: '{speaker}' {transcript}")
                 
                 # STT 수신 내용 브로드캐스트
                 await connection_manager.broadcast({
