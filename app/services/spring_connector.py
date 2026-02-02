@@ -10,8 +10,9 @@ class SpringConnector:
     def __init__(self):
          # 실제 운영 환경에서는 환경변수로 관리
          # .env에서 읽어오거나 기본값 사용
-        self.spring_api_url = os.getenv("SPRING_API_URL", "http://localhost:8080/api/calls/end")
-        self.customer_api_url_base = os.getenv("SPRING_CUSTOMER_API_URL", "http://localhost:8080/api/customers")
+        self.spring_api_url = os.getenv("SPRING_API_URL", "http://localhost:8080/ai/api/v1/calls/end")
+        self.customer_api_url_base = os.getenv("SPRING_CUSTOMER_API_URL", "http://localhost:8080/ai/api/v1/customers/search")
+        self.api_key = os.getenv("SPRING_API_KEY")
 
     async def get_customer_info(self, customer_number: str) -> CustomerInfo:
         """
@@ -24,9 +25,15 @@ class SpringConnector:
             CustomerInfo: 고객 정보 객체 (실패 시 None 또는 예외 발생)
         """
         try:
-            url = f"{self.customer_api_url_base}/{customer_number}"
+            # Spring Controller: @GetMapping("/search") @RequestParam String phoneNumber
+            # URL: .../search
+            # Params: { "phoneNumber": "..." }
+            url = self.customer_api_url_base
+            params = {"phoneNumber": customer_number}
+            headers = {"X-API-KEY": self.api_key} if self.api_key else {}
+            
             async with httpx.AsyncClient() as client:
-                response = await client.get(url, timeout=5.0)
+                response = await client.get(url, params=params, headers=headers, timeout=5.0)
                 if response.status_code == 404:
                     logger.warning(f"Customer not found: {customer_number}")
                     return None
@@ -56,9 +63,11 @@ class SpringConnector:
         """
         try:
             async with httpx.AsyncClient() as client:
+                headers = {"X-API-KEY": self.api_key} if self.api_key else {}
                 response = await client.post(
                     self.spring_api_url, 
                     json=call_data,
+                    headers=headers,
                     timeout=10.0
                 )
                 response.raise_for_status()
