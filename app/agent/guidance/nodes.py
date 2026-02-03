@@ -146,8 +146,8 @@ async def generate_node(state: AgentState):
       "last_messages": last_messages
   })
 
-  print(f"{result['recommended_answer'][:40]}... ==========")
-  print(f"{result['work_guide'][:40]}... ==========")
+  # print(f"{result['recommended_answer'][:40]}... ==========")
+  # print(f"{result['work_guide'][:40]}... ==========")
 
   return {
       **state,
