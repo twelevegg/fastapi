@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 
 class CustomerInfo(BaseModel):
@@ -23,5 +23,4 @@ class CustomerInfo(BaseModel):
     household_type: Optional[str] = Field(None, alias="1인가구/가족 가구")
     remote_work: Optional[str] = Field(None, alias="재택 근무")
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)

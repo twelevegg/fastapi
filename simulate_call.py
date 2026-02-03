@@ -55,6 +55,10 @@ async def simulate_call():
             ]
             
             for i, turn in enumerate(turns):
+                if i == 3:
+                     print("\n--- Simulating 10s Silence (Pause) ---\n")
+                     await asyncio.sleep(10)
+
                 turn_data = {
                     "callId": call_id,
                     "speaker": turn["speaker"],
@@ -78,8 +82,8 @@ async def simulate_call():
                 await asyncio.sleep(2) # Simulate delay between turns
             
             print("Simulation complete. Messages sent!")
-            print("Keeping connection alive for 30 seconds to receive all AI responses...")
-            await asyncio.sleep(30)
+            print("Keeping connection alive for 1 hour... (Press Ctrl+C to stop)")
+            await asyncio.sleep(3600)
             print("Closing connection.")
             
     except Exception as e:

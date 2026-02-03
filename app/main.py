@@ -46,11 +46,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite
-        "http://localhost:3000",   # CRA
-        "https://skylar-unadornable-flurriedly.ngrok-free.dev" # Ngrok
-        ],
+    allow_origins=["*"],  # [DEBUG] Allow all for dev
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
