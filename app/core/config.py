@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     QDRANT_DENSE_EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     QDRANT_SPARSE_EMBEDDING_MODEL: str = "Qdrant/bm25"
 
+    # Spring Backend Configuration
+    SPRING_API_KEY: str
+    SPRING_API_URL: str = "http://localhost:8080/api/v1/calls/end"
+    SPRING_CUSTOMER_API_URL: str = "http://localhost:8080/api/v1/customers/search"
+
     # LLM Configuration
     LLM_BASE_URL: str = "https://api.openai.com/v1"
     LLM_MODEL: str = "gpt-4o-mini"

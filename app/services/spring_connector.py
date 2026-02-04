@@ -10,9 +10,9 @@ class SpringConnector:
     def __init__(self):
          # 실제 운영 환경에서는 환경변수로 관리
          # .env에서 읽어오거나 기본값 사용
-        self.spring_api_url = os.getenv("SPRING_API_URL", "http://localhost:8080/api/v1/calls/end")
-        self.customer_api_url_base = os.getenv("SPRING_CUSTOMER_API_URL", "http://localhost:8080/api/v1/customers/search")
-        self.api_key = os.getenv("SPRING_API_KEY")
+        self.spring_api_url = settings.SPRING_API_URL
+        self.customer_api_url_base = settings.SPRING_CUSTOMER_API_URL
+        self.api_key = settings.SPRING_API_KEY
 
     async def get_customer_info(self, customer_number: str) -> CustomerInfo:
         """
@@ -32,6 +32,10 @@ class SpringConnector:
             params = {"phoneNumber": customer_number}
             headers = {"X-API-KEY": self.api_key} if self.api_key else {}
             
+            # [DEBUG] 헤더 확인 로그
+            safe_headers = {k: (v[:4] + "***" if k == "X-API-KEY" and v else "None") for k, v in headers.items()}
+            print(f"[SpringConnector] Sending request to {url} with headers: {safe_headers}")
+
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, params=params, headers=headers, timeout=5.0)
                 if response.status_code == 404:
