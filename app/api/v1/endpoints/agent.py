@@ -11,6 +11,7 @@ from app.services.connection_manager import connection_manager
 from app.services.notification_manager import notification_manager
 from app.services.spring_connector import spring_connector
 from app.services.analysis_service import analysis_service
+from app.utils.phone_number_generator import get_random_phone_number
 
 # 에이전트 등록 (서버 시작 시 또는 모듈 로드 시)
 agent_manager.register_agent(handle_guidance_message)
@@ -30,13 +31,88 @@ async def broadcast_event(request: Request):
     await notification_manager.broadcast(data)
     return {"status": "ok"}
 
+# [NEW] 공통 분석 로직 추출
+async def process_call_analysis(call_id: str):
+    """
+    전화 종료 시(또는 강제 종료 트리거 시) 분석을 수행하고 Spring으로 전송하는 함수
+    """
+    history = connection_manager.get_history(call_id)
+    customer_info = connection_manager.get_customer_info(call_id)
+    customer_number = customer_info.get("phoneNumber") if customer_info else None
+    
+    # [FIX] customer_info 내부에 phoneNumber가 없으면, 랜덤 생성했던 번호를 못 찾을 수도 있음.
+    # 하지만 일단 connection_manager에 무엇을 저장했느냐에 따름.
+    # 만약 customer_info 전체 딕셔너리를 저장했다면 phoneNumber 키가 없을 수도 있음. (Spring 응답 구조 확인 필요)
+    # 일단 'customer_number' 별도 저장소 없이 customer_info에 의존.
+    
+    member_info = connection_manager.get_member_id(call_id)
+    member_id = member_info.get("member_id") if member_info else None
+    tenant_name = member_info.get("tenant_name") if member_info else None
+
+    if not history:
+        print(f"No conversation history for {call_id}. Skipping analysis.")
+        return
+
+    print(f"Processing Call Analysis for {call_id} (Length: {len(history)} turns)...")
+    
+    try:
+        # 분석 수행
+        analysis_result = await analysis_service.analyze_conversation(history)
+        print(f"Analysis complete: {analysis_result.summary_text[:50]}...")
+        
+        payload = {
+            "transcripts": history,
+            "summary_text": analysis_result.summary_text,
+            "estimated_cost": analysis_result.estimated_cost,
+            "ces_score": analysis_result.ces_score,
+            "csat_score": analysis_result.csat_score,
+            "rps_score": analysis_result.rps_score,
+            "keyword": analysis_result.keyword,
+            "violence_count": analysis_result.violence_count,
+            "customer_number": customer_number,
+            "member_id": member_id,
+            "tenant_name": tenant_name
+        }
+        
+        # Spring 전송
+        await spring_connector.send_call_data(payload)
+        
+        # 분석 완료 알림 등으로 UI 업데이트 가능 (선택)
+        
+    except Exception as e:
+        print(f"Error during call end processing for {call_id}: {e}")
+
+
 @router.websocket("/monitor/{call_id}")
 async def monitor_endpoint(websocket: WebSocket, call_id: str):
     await connection_manager.connect(websocket, call_id)
+    
+    # [NEW] Frontend에서 메시지를 받을 수 있도록 Loop 추가
     try:
         while True:
-            # Keep the connection alive
-            await websocket.receive_text()
+            text = await websocket.receive_text()
+            print(f"Monitor received: {text}")
+            try:
+                data = json.loads(text)
+                if data.get("type") == "CALL_ENDED":
+                    print(f"[Frontend Trigger] Explicit Call End for {call_id}")
+                    await notification_manager.broadcast({
+                        "type": "CALL_ENDED",
+                        "callId": call_id
+                    })
+                    # 비동기로 분석 수행
+                    import asyncio
+                    asyncio.create_task(process_call_analysis(call_id))
+
+                elif data.get("type") == "IDENTIFY":
+                    member_id = data.get("memberId")
+                    tenant_name = data.get("tenantName")
+                    if member_id:
+                        connection_manager.set_member_id(call_id, member_id, tenant_name or "default")
+                        
+            except json.JSONDecodeError:
+                pass
+                
     except WebSocketDisconnect:
         connection_manager.disconnect(websocket, call_id)
         print(f"Monitor client disconnected from {call_id}")
@@ -141,9 +217,28 @@ async def websocket_endpoint(websocket: WebSocket):
                 # 1. Metadata Handling
                 received_call_id = data.get("callId") or data.get("call_id")
                 if received_call_id and "transcript" not in data:
-                    current_session_id = received_call_id
-                    print(f"Call metadata received: {current_session_id}")
-
+                    print(f"Call metadata received: {received_call_id}")
+                    
+                    # [FIX] 새로운 Call ID 수신 시 상태 초기화 (재전화 시 Turn ID 리셋 안되는 문제 해결)
+                    # 기존 세션 ID와 다르거나, metadata 메시지 자체가 새 통화의 시작을 의미하므로 리셋 수행
+                    if received_call_id != current_session_id:
+                        print(f"New session detected ({current_session_id} -> {received_call_id}). Resetting state.")
+                        current_session_id = received_call_id
+                        turn_counter = 0
+                        conversation_history = []
+                        is_first_turn = True
+                        customer_info = {"customer_id": "UNKNOWN", "name": "알 수 없음", "rate_plan": "Basic", "joined_date": "2024-01-01"}
+                        # [NEW] Clear Central Store for new ID? Or just let it accumulate
+                    else:
+                        # 동일 세션 ID로 메타데이터가 다시 온 경우 (업데이트 등) - 리셋하지 않음?
+                        # 하지만 Asterisk 로직상 metadata_start는 통화 당 1회이므로, 
+                        # 만약 같은 ID로 또 오면 리셋하는게 안전할 수도 있음. 
+                        # 여기서는 명시적으로 turn_counter = 0을 수행하여 확실하게 초기화.
+                        print(f"Metadata received for existing session. Forcing reset for safety.")
+                        turn_counter = 0
+                        conversation_history = []
+                        is_first_turn = True
+                        
                     # [OPTIMIZATION] 팝업을 즉시 띄우기 위해 CALL_STARTED 먼저 전송
                     # 고객 정보는 아직 없으므로 기본값 또는 빈 값으로 보냄
                     await notification_manager.broadcast({
@@ -153,12 +248,21 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
 
                     # [NEW] 고객 정보 조회 (Spring) - 비동기로 처리하여 팝업 지연 방지
-                    customer_number = data.get("customer_number")
+                    # 데모 시연을 위해 실제 번호 대신 랜덤 번호를 사용하여 다양한 고객 시나리오 연출
+                    customer_number = get_random_phone_number()
+                    print(f"[DEMO] Selected Random Customer Number: {customer_number}")
+
                     if customer_number:
-                         # print(f"Fetching info for customer: {customer_number}")
+                         print(f"Fetching info for customer: {customer_number}")
                          fetched_info = await spring_connector.get_customer_info(customer_number)
                          if fetched_info:
                              customer_info = fetched_info.model_dump()
+                             # [NEW] Store customer info centrally
+                             # Important: Add 'phoneNumber' key for later retrieval if check fails
+                             customer_info["phoneNumber"] = customer_number
+                             
+                             connection_manager.set_customer_info(current_session_id, customer_info)
+                             
                              # print(f"Customer info loaded: {customer_info.get('name')}")
                              
                              # 정보가 로드되면 메타데이터 업데이트 이벤트 전송 (프론트에서 갱신하도록)
@@ -194,9 +298,22 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     print(f"Processing turn {turn_id}: '{speaker}' {transcript}")
 
-                    # 비상용: 메타데이터 누락 시 첫 턴에서 강제 시작 알림
+                    # 비상용: 메타데이터 누락 시 첫 턴에서 강제 시작 알림 + 고객 정보 조회 시도
                     if is_first_turn:
-                         print(f"First turn received. Broadcasting CALL_STARTED fallback.")
+                         print(f"First turn received. Executing fallback customer lookup.")
+                         
+                         # [FALLBACK] 메타데이터가 안 왔을 경우 여기서라도 랜덤 번호 생성 & Spring 조회
+                         if not customer_number:
+                             customer_number = get_random_phone_number()
+                             print(f"[DEMO-FALLBACK] Selected Random Customer Number: {customer_number}")
+                             
+                             fetched_info = await spring_connector.get_customer_info(customer_number)
+                             if fetched_info:
+                                 customer_info = fetched_info.model_dump()
+                                 customer_info["phoneNumber"] = customer_number
+                                 connection_manager.set_customer_info(current_session_id, customer_info)
+                                 print(f"[FALLBACK] Customer info loaded: {customer_info.get('name')}")
+
                          await notification_manager.broadcast({
                             "type": "CALL_STARTED",
                             "callId": current_session_id,
@@ -217,7 +334,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     if not transcript or not speaker:
                         continue
                         
-                    conversation_history.append({"speaker": speaker, "transcript": transcript})
+                    current_turn_obj = {"speaker": speaker, "transcript": transcript}   
+                    conversation_history.append(current_turn_obj)
+                    
+                    # [NEW] Store transcript centrally
+                    connection_manager.add_transcript(current_session_id, current_turn_obj)
                     
                     # STT 수신 내용 브로드캐스트
                     await connection_manager.broadcast({
@@ -258,28 +379,15 @@ async def websocket_endpoint(websocket: WebSocket):
             "callId": current_session_id
         })
         
+        # [MODIFIED] Fallback Analysis on Disconnect
+        # If the frontend didn't trigger it explicitly, we do it here.
+        # Check if already processed? The function is idempotent-ish if called multiple times, 
+        # but better to rely on one source. 
+        # For now, we will attempt analysis here too, but we can verify if it's needed.
+        # Since 'process_call_analysis' uses current history, it's fine to run.
         if conversation_history:
-            print(f"Call {current_session_id} ended. Generating comprehensive analysis...")
-            try:
-                analysis_result = await analysis_service.analyze_conversation(conversation_history)
-                print(f"Analysis complete: {analysis_result.summary_text[:50]}...")
-                
-                payload = {
-                    "transcripts": conversation_history,
-                    "summary_text": analysis_result.summary_text,
-                    "estimated_cost": analysis_result.estimated_cost,
-                    "ces_score": analysis_result.ces_score,
-                    "csat_score": analysis_result.csat_score,
-                    "rps_score": analysis_result.rps_score,
-                    "keyword": analysis_result.keyword,
-                    "violence_count": analysis_result.violence_count,
-                    "customer_number": customer_number
-                }
-                
-                await spring_connector.send_call_data(payload)
-                
-            except Exception as e:
-                print(f"Error during call end processing: {e}")
+             print(f"[Disconnect] Triggering cleanup analysis for {current_session_id}")
+             asyncio.create_task(process_call_analysis(current_session_id))
 
     except json.JSONDecodeError:
         print("Received non-JSON data")

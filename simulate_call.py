@@ -27,9 +27,12 @@ async def simulate_call():
             await websocket.send(json.dumps(metadata))
             print(f"Sent metadata: {metadata}")
             
-            # Receive response for metadata
-            response = await websocket.recv()
-            print(f"Received: {response}")
+            print(f"Sent metadata: {metadata}")
+            
+            # [MODIFIED] Server no longer sends ACK to source (to avoid Asterisk buffer issues)
+            # So we don't wait for response here.
+            # response = await websocket.recv()
+            # print(f"Received: {response}")
             
             print("Wait 3 seconds before sending dialogue...")
             await asyncio.sleep(3)

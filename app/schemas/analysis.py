@@ -13,5 +13,7 @@ class CallAnalysisResult(BaseModel):
 class CallLogPayload(CallAnalysisResult):
     """Spring 서버로 전송할 최종 데이터 스키마"""
     customer_number: Optional[str] = Field(None, description="고객 전화번호")
+    member_id: Optional[int] = Field(None, description="상담원 ID (로그인된 사용자)")
+    tenant_name: Optional[str] = Field(None, description="테넌트 이름 (예: default)")
     transcripts: List[dict] = Field(..., description="상담 전문 (Speaker, Transcript)")
 
