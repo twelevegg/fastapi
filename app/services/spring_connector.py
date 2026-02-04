@@ -10,8 +10,8 @@ class SpringConnector:
     def __init__(self):
          # 실제 운영 환경에서는 환경변수로 관리
          # .env에서 읽어오거나 기본값 사용
-        self.spring_api_url = os.getenv("SPRING_API_URL", "http://localhost:8080/ai/api/v1/calls/end")
-        self.customer_api_url_base = os.getenv("SPRING_CUSTOMER_API_URL", "http://localhost:8080/ai/api/v1/customers/search")
+        self.spring_api_url = os.getenv("SPRING_API_URL", "http://localhost:8080/api/v1/calls/end")
+        self.customer_api_url_base = os.getenv("SPRING_CUSTOMER_API_URL", "http://localhost:8080/api/v1/customers/search")
         self.api_key = os.getenv("SPRING_API_KEY")
 
     async def get_customer_info(self, customer_number: str) -> CustomerInfo:
