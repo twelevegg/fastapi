@@ -31,6 +31,9 @@ QDRANT_API_KEY = [노션에 있음]
 QDRANT_COLLECTION_NAME = "cs_guideline"
 QDRANT_DENSE_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 QDRANT_SPARSE_EMBEDDING_MODEL = "Qdrant/bm25"
+SPRING_API_KEY=[노션에 있음]
+SPRING_API_URL=[노션에 있음]
+SPRING_CUSTOMER_API_URL=[노션에 있음]
 ```
 
 ### 3. 서버 실행
