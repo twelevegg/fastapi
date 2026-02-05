@@ -56,6 +56,23 @@ async def process_call_analysis(call_id: str):
     print(f"Processing Call Analysis for {call_id} (Length: {len(history)} turns)...")
     
     try:
+        # [NEW] 시간 관련 데이터 계산
+        from datetime import datetime
+        start_time = connection_manager.get_start_time(call_id)
+        end_time = datetime.now()
+        duration = 0
+        billsec = 0
+        
+        start_time_str = None
+        end_time_str = end_time.isoformat()
+        
+        if start_time:
+            start_time_str = start_time.isoformat()
+            duration_delta = end_time - start_time
+            duration = int(duration_delta.total_seconds())
+            # 현재는 billsec = duration으로 처리 (추후 세분화 가능)
+            billsec = duration*0.7
+        
         # 분석 수행
         analysis_result = await analysis_service.analyze_conversation(history)
         print(f"Analysis complete: {analysis_result.summary_text[:50]}...")
@@ -71,7 +88,12 @@ async def process_call_analysis(call_id: str):
             "violence_count": analysis_result.violence_count,
             "customer_number": customer_number,
             "member_id": member_id,
-            "tenant_name": tenant_name
+            "tenant_name": tenant_name,
+            # [NEW] Time metrics
+            "start_time": start_time_str,
+            "end_time": end_time_str,
+            "duration": duration,
+            "billsec": billsec
         }
         
         # Spring 전송
@@ -86,6 +108,12 @@ async def process_call_analysis(call_id: str):
 @router.websocket("/monitor/{call_id}")
 async def monitor_endpoint(websocket: WebSocket, call_id: str):
     await connection_manager.connect(websocket, call_id)
+    
+    # [NEW] 통화 시작 시간 기록 (Monitor 연결 기준)
+    # 이미 기록된 시간이 없을 때만 기록 (재연결 시 초기화 방지)
+    if not connection_manager.get_start_time(call_id):
+        connection_manager.set_start_time(call_id)
+        print(f"Call start time recorded for {call_id} (Monitor Connected)")
     
     # [NEW] Frontend에서 메시지를 받을 수 있도록 Loop 추가
     try:
@@ -133,6 +161,9 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     current_session_id = str(uuid.uuid4())
     print(f"Agent WebSocket Connected. Session ID: {current_session_id}")
+    
+    # [MOVED] 통화 시작 시간 기록은 monitor_endpoint로 이동함
+    # connection_manager.set_start_time(current_session_id)
     
     # 기본 고객 정보 (Spring 조회 실패 시 사용)
     customer_info = {"customer_id": "UNKNOWN", "name": "알 수 없음", "rate_plan": "Basic", "joined_date": "2024-01-01"}

@@ -10,6 +10,8 @@ class ConnectionManager:
         self.call_customer_info: Dict[str, Dict] = {}
         # [NEW] Call ID별 담당 상담원 정보 (member_id, tenant_name)
         self.call_member_id: Dict[str, Dict] = {}
+        # [NEW] Call ID별 시작 시간 저장
+        self.call_start_times: Dict[str, object] = {}
 
     async def connect(self, websocket: WebSocket, call_id: str):
         await websocket.accept()
@@ -60,5 +62,14 @@ class ConnectionManager:
                     print(f"Error broadcasting to client in {call_id}: {e}")
                     # 여기서 끊는 로직을 넣을 수도 있지만, disconnect 호출되는 흐름에 맡김
                     # 필요하다면 self.disconnect(connection, call_id) 호출
+
+    # [NEW] 통화 시작 시간 관리
+    def set_start_time(self, call_id: str):
+        from datetime import datetime
+        self.call_start_times[call_id] = datetime.now()
+        print(f"Call {call_id} started at {self.call_start_times[call_id]}")
+
+    def get_start_time(self, call_id: str):
+        return self.call_start_times.get(call_id)
 
 connection_manager = ConnectionManager()
