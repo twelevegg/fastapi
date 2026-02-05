@@ -797,7 +797,8 @@ class MarketingSession:
             # Check last 2 turns (User + Agent)
             for t in self.turns[-2:]:
                 if t.transcript: 
-                    last_turn_text += " " + t.transcript
+                    # [FIX] transcript가 dict일 수 있으므로 문자열 변환
+                    last_turn_text += " " + safe_str(t.transcript)
         
         # Product Index Removed
         # if self.product_index and hasattr(self.product_index, "all_names"):

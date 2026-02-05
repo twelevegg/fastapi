@@ -15,5 +15,12 @@ class CallLogPayload(CallAnalysisResult):
     customer_number: Optional[str] = Field(None, description="고객 전화번호")
     member_id: Optional[int] = Field(None, description="상담원 ID (로그인된 사용자)")
     tenant_name: Optional[str] = Field(None, description="테넌트 이름 (예: default)")
+    
+    # [NEW] 통화 시간 관련 메트릭
+    start_time: Optional[str] = Field(None, description="통화 시작 시간 (ISO 8601)")
+    end_time: Optional[str] = Field(None, description="통화 종료 시간 (ISO 8601)")
+    duration: Optional[int] = Field(None, description="총 통화 기간(초)")
+    billsec: Optional[int] = Field(None, description="실제 과금/발화 기간(초)")
+
     transcripts: List[dict] = Field(..., description="상담 전문 (Speaker, Transcript)")
 
