@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     LLM_BASE_URL: str = "https://api.openai.com/v1"
     LLM_MODEL: str = "gpt-4o-mini"
     
+    # CORS Configuration
+    BACKEND_CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:8080",
+        "https://api.csnavigator.cloud",
+        "https://www.csnavigator.cloud",
+        "http://127.0.0.1:5173"
+    ]
+
     model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
 
 settings = Settings()

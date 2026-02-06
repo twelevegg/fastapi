@@ -46,7 +46,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # [DEBUG] Allow all for dev
+    # [FIX] allow_credentials=True일 때는 allow_origins에 "*"를 쓸 수 없음
+    # 환경변수(BACKEND_CORS_ORIGINS)에서 로드된 목록 사용
+    allow_origins=settings.BACKEND_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
