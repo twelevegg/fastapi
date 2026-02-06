@@ -46,10 +46,10 @@ async def handle_guidance_message(turn: dict, session_id: str, customer_info: di
         
         # [DEBUG] 메시지 적재되는지 확인
         current_state = graph.get_state(config)
-        print(f"\n[Guidance] Current Messages (Thread {session_id}):")
-        if current_state and current_state.values:
-            for msg in current_state.values.get("message", []):
-                print(f" - [{msg.type}] (ID: {msg.id}) {msg.content}")
+        # print(f"\n[Guidance] Current Messages (Thread {session_id}):")
+        # if current_state and current_state.values:
+        #     for msg in current_state.values.get("message", []):
+        #         print(f" - [{msg.type}] (ID: {msg.id}) {msg.content}")
         # 디버깅용이라 나중에 삭제할 것===============================================
 
         return {
@@ -68,10 +68,10 @@ async def handle_guidance_message(turn: dict, session_id: str, customer_info: di
         
         # [DEBUG] 메시지 적재 확인
         current_state = graph.get_state(config)
-        print(f"\n[Guidance] Current Messages (Thread {session_id}):")
-        if current_state and current_state.values:
-            for msg in current_state.values.get("message", []):
-                print(f" - [{msg.type}] (ID: {msg.id}) {msg.content}")
+        # print(f"\n[Guidance] Current Messages (Thread {session_id}):")
+        # if current_state and current_state.values:
+        #     for msg in current_state.values.get("message", []):
+        #         print(f" - [{msg.type}] (ID: {msg.id}) {msg.content}")
         
         # HumanMessage 등은 JSON 직렬화가 안되므로 필요한 값만 추출하여 반환
         return {

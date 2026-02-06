@@ -169,9 +169,18 @@ async def memory_extraction_node(state: State):
         max_tokens=200,
     )
 
+    # Markdown json block cleanup
+    cleaned_text = text.replace("```json", "").replace("```", "").strip()
+
+    try:
+        parsed_json = json.loads(cleaned_text)
+    except json.JSONDecodeError:
+        print(f"JSON Parse Error. Raw text: {text}")
+        parsed_json = []
+
     return {
         "memory_candidate": {
-            "explained_causes": json.loads(text)
+            "explained_causes": parsed_json
         }
     }
 

@@ -6,12 +6,20 @@ router = APIRouter()
 
 @router.post("/rp", response_model=RPChatResponse)
 async def rp_chat(req: RPChatRequest):
+    print(f"[RP] Request received for session: {req.session_id}, msg: {req.message}")
     state = await handle_agent_message(
         session_id=req.session_id,
         message=req.message,
     )
-
+    
+    # [DEBUG]
+    # print(f"[RP] Final State keys: {state.keys()}")
+    if not state.get("messages"):
+        print("[RP] ERROR: No messages in state!")
+        # 예외를 던지거나 기본값 처리
+    
     last_msg = state["messages"][-1]
+    print(f"[RP] Last message role: {last_msg.type}, Content: {last_msg.content}")
 
     return RPChatResponse(
         session_id=req.session_id,

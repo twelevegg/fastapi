@@ -226,3 +226,7 @@ marketing_architecture_diagram.html
 *.json
 *.png
 *.pdf
+
+
+# jobs
+jobs/
