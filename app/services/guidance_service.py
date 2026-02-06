@@ -23,12 +23,14 @@ async def handle_guidance_message(turn: dict, session_id: str, customer_info: di
 
     # 메시지 객체 생성
     message_obj = None
+    msg_id = str(turn_id) if turn_id is not None else None
+
     if speaker == "customer":
-        message_obj = HumanMessage(content=transcript, additional_kwargs=extra_data)
+        message_obj = HumanMessage(content=transcript, additional_kwargs=extra_data, id=msg_id)
     else:
         # 상담사(agent/counselor) 발화는 AIMessage로 취급
         # name='counselor'를 주어 analysis 노드에서 식별 가능하게 함
-        message_obj = AIMessage(content=transcript, name="counselor", additional_kwargs=extra_data)
+        message_obj = AIMessage(content=transcript, name="counselor", additional_kwargs=extra_data, id=msg_id)
 
     # LangGraph Config
     config = {"configurable": {"thread_id": session_id}}
@@ -47,7 +49,7 @@ async def handle_guidance_message(turn: dict, session_id: str, customer_info: di
         print(f"\n[Guidance] Current Messages (Thread {session_id}):")
         if current_state and current_state.values:
             for msg in current_state.values.get("message", []):
-                print(f" - [{msg.type}] {msg.content}")
+                print(f" - [{msg.type}] (ID: {msg.id}) {msg.content}")
         # 디버깅용이라 나중에 삭제할 것===============================================
 
         return {
@@ -69,7 +71,7 @@ async def handle_guidance_message(turn: dict, session_id: str, customer_info: di
         print(f"\n[Guidance] Current Messages (Thread {session_id}):")
         if current_state and current_state.values:
             for msg in current_state.values.get("message", []):
-                print(f" - [{msg.type}] {msg.content}")
+                print(f" - [{msg.type}] (ID: {msg.id}) {msg.content}")
         
         # HumanMessage 등은 JSON 직렬화가 안되므로 필요한 값만 추출하여 반환
         return {
