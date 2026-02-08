@@ -14,6 +14,10 @@ class Memory(TypedDict, total=False):
 class RPState(TypedDict):
     messages: Annotated[list, add_messages]
 
+    persona: dict | None
+
+    start_call: bool | None
+
     # 시스템 상태
     current_goal: str
     understanding_level: int

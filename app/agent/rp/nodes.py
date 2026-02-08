@@ -19,6 +19,7 @@ from app.agent.rp.prompts import build_customer_system_prompt
 # State 타입
 from app.agent.rp.state import RPState as State
 
+
 def normalize_messages(messages):
     normalized = []
 
@@ -26,20 +27,14 @@ def normalize_messages(messages):
         # 1️⃣ LangChain Message 객체
         if isinstance(m, BaseMessage):
             role = "user" if m.type == "human" else "assistant"
-            normalized.append({
-                "role": role,
-                "content": m.content
-            })
+            normalized.append({"role": role, "content": m.content})
             continue
 
         # 2️⃣ dict 형태
         if isinstance(m, dict):
             # role / content 둘 다 있어야 통과
             if "role" in m and "content" in m:
-                normalized.append({
-                    "role": m["role"],
-                    "content": m["content"]
-                })
+                normalized.append({"role": m["role"], "content": m["content"]})
                 continue
             else:
                 raise ValueError(f"Invalid message dict (missing role/content): {m}")
@@ -49,16 +44,20 @@ def normalize_messages(messages):
 
     return normalized
 
+
 def init_state_node(state: State):
+    persona = state.get("persona")
+    start_call = state.get("start_call")
     return {
         "messages": state.get("messages", []),
         "current_goal": "요금이 왜 이렇게 많이 나왔는지 이유를 알고 싶다",
         "understanding_level": 0,
         "ready_to_close": False,
+        "persona": persona,
+        "start_call": start_call,
         "memory": {},
         "memory_candidate": None,
     }
-
 
 
 # ===============================
@@ -112,10 +111,8 @@ async def customer_talk_node(state: State):
     )
 
     return {
-        "messages": [{
-            "role": "assistant",
-            "content": text
-        }]
+        "messages": [{"role": "assistant", "content": text}],
+        "start_call": False,
     }
 
 
@@ -133,16 +130,15 @@ async def close_talk_node(state: State):
     )
 
     return {
-        "messages": [{
-            "role": "assistant",
-            "content": text
-        }]
+        "messages": [{"role": "assistant", "content": text}],
+        "start_call": False,
     }
 
 
 # ===============================
 # MEMORY 노드
 # ===============================
+
 
 async def memory_extraction_node(state: State):
     last_msg = state["messages"][-1]
@@ -178,11 +174,8 @@ async def memory_extraction_node(state: State):
         print(f"JSON Parse Error. Raw text: {text}")
         parsed_json = []
 
-    return {
-        "memory_candidate": {
-            "explained_causes": parsed_json
-        }
-    }
+    return {"memory_candidate": {"explained_causes": parsed_json}}
+
 
 def memory_apply_node(state: State):
     candidate = state.get("memory_candidate")
@@ -201,11 +194,11 @@ def memory_apply_node(state: State):
         prev = memory.get("explained_causes", [])
         memory["explained_causes"] = prev + explained
 
-
     state["memory"] = memory
     state["memory_candidate"] = None
 
     return state
+
 
 # ===============================
 # 분기 조건
