@@ -4,6 +4,9 @@ from typing import List, Optional
 import json
 import uuid
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.services.guidance_service import handle_guidance_message
 from app.services.marketing_service import handle_marketing_message
@@ -51,10 +54,10 @@ async def process_call_analysis(call_id: str):
     tenant_name = member_info.get("tenant_name") if member_info else None
 
     if not history:
-        print(f"No conversation history for {call_id}. Skipping analysis.")
+        logger.info(f"No conversation history for {call_id}. Skipping analysis.")
         return
 
-    print(f"Processing Call Analysis for {call_id} (Length: {len(history)} turns)...")
+    logger.info(f"Processing Call Analysis for {call_id} (Length: {len(history)} turns)...")
     
     try:
         # [NEW] 시간 관련 데이터 계산
@@ -76,7 +79,7 @@ async def process_call_analysis(call_id: str):
         
         # 분석 수행
         analysis_result = await analysis_service.analyze_conversation(history)
-        print(f"Analysis complete: {analysis_result.summary_text[:50]}...")
+        logger.info(f"Analysis complete for {call_id}: {analysis_result.summary_text[:50]}...")
         
         payload = {
             "transcripts": history,
@@ -103,7 +106,7 @@ async def process_call_analysis(call_id: str):
         # 분석 완료 알림 등으로 UI 업데이트 가능 (선택)
         
     except Exception as e:
-        print(f"Error during call end processing for {call_id}: {e}")
+        logger.error(f"Error during call end processing for {call_id}: {e}")
 
 
 @router.websocket("/monitor/{call_id}")
@@ -114,7 +117,7 @@ async def monitor_endpoint(websocket: WebSocket, call_id: str):
     # 이미 기록된 시간이 없을 때만 기록 (재연결 시 초기화 방지)
     if not connection_manager.get_start_time(call_id):
         connection_manager.set_start_time(call_id)
-        print(f"Call start time recorded for {call_id} (Monitor Connected)")
+        logger.info(f"Call start time recorded for {call_id} (Monitor Connected)")
     
     # [NEW] Frontend에서 메시지를 받을 수 있도록 Loop 추가
     try:
@@ -124,7 +127,7 @@ async def monitor_endpoint(websocket: WebSocket, call_id: str):
             try:
                 data = json.loads(text)
                 if data.get("type") == "CALL_ENDED":
-                    print(f"[Frontend Trigger] Explicit Call End for {call_id}")
+                    logger.info(f"[Frontend Trigger] Explicit Call End for {call_id}")
                     await notification_manager.broadcast({
                         "type": "CALL_ENDED",
                         "callId": call_id
@@ -143,7 +146,7 @@ async def monitor_endpoint(websocket: WebSocket, call_id: str):
                 
     except WebSocketDisconnect:
         connection_manager.disconnect(websocket, call_id)
-        print(f"Monitor client disconnected from {call_id}")
+        logger.info(f"Monitor client disconnected from {call_id}")
 
 @router.websocket("/notifications/{user_id}")
 async def notification_endpoint(websocket: WebSocket, user_id: str):
@@ -160,7 +163,7 @@ async def notification_endpoint(websocket: WebSocket, user_id: str):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     current_session_id = str(uuid.uuid4())
-    print(f"Agent WebSocket Connected. Session ID: {current_session_id}")
+    logger.info(f"Agent WebSocket Connected. Session ID: {current_session_id}")
     
     # [MOVED] 통화 시작 시간 기록은 monitor_endpoint로 이동함
     # connection_manager.set_start_time(current_session_id)
@@ -204,7 +207,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # [LOG] 에이전트 답변 로그 출력
                 agent_type = result.get("agent_type", "unknown")
                 agent_answer = result.get("answer") or result.get("response") or "No answer field found"
-                print(f"[{agent_type.upper()} AGENT] Response for turn {turn_id}: {agent_answer}")
+                logger.info(f"[{agent_type.upper()} AGENT] Response for turn {turn_id}: {agent_answer}")
                 
                 # [FIX] AWS 버퍼 오버플로우 방지를 위해 Asterisk로의 직접 전송 중단
                 # try:
@@ -222,7 +225,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await connection_manager.broadcast(response, call_id=session_id)
 
         except Exception as e:
-             print(f"Error in background processing for turn {turn_id}: {e}")
+             logger.error(f"Error in background processing for turn {turn_id}: {e}")
 
     try:
         while True:
@@ -236,7 +239,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     try:
                         data = json.loads(raw_text)
                     except json.JSONDecodeError:
-                        print("Received non-JSON data")
+                        logger.warning("Received non-JSON data")
                         await websocket.close(code=1003)
                         break
                 elif raw_bytes is not None:
@@ -250,17 +253,17 @@ async def websocket_endpoint(websocket: WebSocket):
                 # 1. Metadata Handling
                 received_call_id = data.get("callId") or data.get("call_id")
                 if received_call_id and "transcript" not in data:
-                    print(f"Call metadata received: {received_call_id}")
+                    logger.info(f"Call metadata received: {received_call_id}")
                     
                     if received_call_id != current_session_id:
-                        print(f"New session detected ({current_session_id} -> {received_call_id}). Resetting state.")
+                        logger.info(f"New session detected ({current_session_id} -> {received_call_id}). Resetting state.")
                         current_session_id = received_call_id
                         turn_counter = 0
                         conversation_history = []
                         is_first_turn = True
                         customer_info = {"customer_id": "UNKNOWN", "name": "알 수 없음", "rate_plan": "Basic", "joined_date": "2024-01-01"}
                     else:
-                        print(f"Metadata received for existing session. Forcing reset for safety.")
+                        logger.info(f"Metadata received for existing session. Forcing reset for safety.")
                         turn_counter = 0
                         conversation_history = []
                         is_first_turn = True
@@ -272,10 +275,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
 
                     customer_number = get_random_phone_number()
-                    print(f"[DEMO] Selected Random Customer Number: {customer_number}")
+                    logger.info(f"[DEMO] Selected Random Customer Number: {customer_number}")
 
                     if customer_number:
-                         print(f"Fetching info for customer: {customer_number}")
+                         logger.info(f"Fetching info for customer: {customer_number}")
                          fetched_info = await spring_connector.get_customer_info(customer_number)
                          if fetched_info:
                              customer_info = fetched_info.model_dump()
@@ -288,7 +291,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "customer_info": customer_info
                             })
                          else:
-                             print("Customer info fetch failed.")
+                             logger.warning("Customer info fetch failed.")
                     
                     response_metadata = {"status": "received", "type": "metadata", "callId": current_session_id}
                     await connection_manager.broadcast({
@@ -305,10 +308,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     turn_counter += 1
                     turn_id = data.get("turn_id") or turn_counter
 
-                    print(f"Processing turn {turn_id}: '{speaker}' {transcript}")
+                    logger.info(f"Processing turn {turn_id}: '{speaker}' {transcript}")
 
                     if is_first_turn:
-                         print(f"First turn received. Executing fallback customer lookup.")
+                         logger.info(f"First turn received. Executing fallback customer lookup.")
                          if not customer_number:
                              customer_number = get_random_phone_number()
                              fetched_info = await spring_connector.get_customer_info(customer_number)
@@ -353,18 +356,18 @@ async def websocket_endpoint(websocket: WebSocket):
                      pass
                      
             except WebSocketDisconnect:
-                print(f"WebSocket disconnected (Session: {current_session_id})")
+                logger.info(f"WebSocket disconnected (Session: {current_session_id})")
                 break
             except Exception as e:
-                print(f"Error processing message in main loop: {e}")
+                logger.error(f"Error processing message in main loop: {e}")
                 # 에러 발생 시 루프를 종료하여 cleanup(finally)으로 이동합니다.
                 break
 
     except Exception as e:
-        print(f"Unexpected error in websocket_endpoint: {e}")
+        logger.error(f"Unexpected error in websocket_endpoint: {e}")
     finally:
         # [CLEANUP] 모든 종료 상황(정상 종료, 에러, 연결 끊김)에서 실행됩니다.
-        print(f"Cleaning up session: {current_session_id}")
+        logger.info(f"Cleaning up session: {current_session_id}")
         
         await notification_manager.broadcast({
             "type": "CALL_ENDED",
@@ -372,7 +375,7 @@ async def websocket_endpoint(websocket: WebSocket):
         })
         
         if conversation_history:
-             print(f"[Cleanup] Triggering analysis for {current_session_id}")
+             logger.info(f"[Cleanup] Triggering analysis for {current_session_id}")
              asyncio.create_task(process_call_analysis(current_session_id))
         
         try:
