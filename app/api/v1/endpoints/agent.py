@@ -201,6 +201,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     "results": result 
                 }
                 
+                # [LOG] 에이전트 답변 로그 출력
+                agent_type = result.get("agent_type", "unknown")
+                agent_answer = result.get("answer") or result.get("response") or "No answer field found"
+                print(f"[{agent_type.upper()} AGENT] Response for turn {turn_id}: {agent_answer}")
+                
                 # [FIX] AWS 버퍼 오버플로우 방지를 위해 Asterisk로의 직접 전송 중단
                 # try:
                 #     await websocket.send_json(response)
