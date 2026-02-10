@@ -28,6 +28,9 @@ class Settings(BaseSettings):
         "https://www.csnavigator.cloud",
         "http://127.0.0.1:5173"
     ]
+    
+    # Simulation Configuration
+    SIMULATION_TARGET_URI: str = "ws://127.0.0.1:8000/ai/api/v1/agent/check"
 
     model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
 

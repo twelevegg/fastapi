@@ -34,6 +34,7 @@ QDRANT_SPARSE_EMBEDDING_MODEL = "Qdrant/bm25"
 SPRING_API_KEY=[노션에 있음]
 SPRING_API_URL=[노션에 있음]
 SPRING_CUSTOMER_API_URL=[노션에 있음]
+SIMULATION_TARGET_URI=[노션에 있음]
 ```
 
 ### 3. 서버 실행
