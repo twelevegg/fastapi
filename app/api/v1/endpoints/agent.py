@@ -171,6 +171,7 @@ async def websocket_endpoint(websocket: WebSocket):
     # 기본 고객 정보 (Spring 조회 실패 시 사용)
     customer_info = {"customer_id": "UNKNOWN", "name": "알 수 없음", "rate_plan": "Basic", "joined_date": "2024-01-01"}
     is_first_turn = True
+    has_broadcast_start = False # [NEW] CALL_STARTED 중복 전송 방지 플래그
     customer_number = None 
     conversation_history = []
     turn_counter = 0 # [NEW] 턴 카운터
@@ -261,18 +262,22 @@ async def websocket_endpoint(websocket: WebSocket):
                         turn_counter = 0
                         conversation_history = []
                         is_first_turn = True
+                        has_broadcast_start = False # 리셋 시 플래그 초기화
                         customer_info = {"customer_id": "UNKNOWN", "name": "알 수 없음", "rate_plan": "Basic", "joined_date": "2024-01-01"}
                     else:
                         logger.info(f"Metadata received for existing session. Forcing reset for safety.")
                         turn_counter = 0
                         conversation_history = []
                         is_first_turn = True
+                        has_broadcast_start = False # 리셋 시 플래그 초기화
                         
-                    await notification_manager.broadcast({
-                        "type": "CALL_STARTED",
-                        "callId": current_session_id,
-                        "customer_info": {"name": "로딩중...", "rate_plan": "확인중..."} 
-                    })
+                    if not has_broadcast_start:
+                        await notification_manager.broadcast({
+                            "type": "CALL_STARTED",
+                            "callId": current_session_id,
+                            "customer_info": {"name": "로딩중...", "rate_plan": "확인중..."} 
+                        })
+                        has_broadcast_start = True
 
                     customer_number = get_random_phone_number()
                     logger.info(f"[DEMO] Selected Random Customer Number: {customer_number}")
@@ -320,11 +325,13 @@ async def websocket_endpoint(websocket: WebSocket):
                                  customer_info["phoneNumber"] = customer_number
                                  connection_manager.set_customer_info(current_session_id, customer_info)
 
-                         await notification_manager.broadcast({
-                            "type": "CALL_STARTED",
-                            "callId": current_session_id,
-                            "customer_info": customer_info
-                        })
+                         if not has_broadcast_start:
+                             await notification_manager.broadcast({
+                                "type": "CALL_STARTED",
+                                "callId": current_session_id,
+                                "customer_info": customer_info
+                            })
+                             has_broadcast_start = True
 
                     if not transcript or not speaker:
                         continue
