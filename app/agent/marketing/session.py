@@ -903,7 +903,7 @@ def build_qdrant_client_from_env() -> QdrantClient:
     key = os.environ.get("QDRANT_API_KEY")
     if not url or not key:
         raise RuntimeError("QDRANT_URL/QDRANT_API_KEY env not set")
-    return QdrantClient(url=url, api_key=key)
+    return QdrantClient(url=url, api_key=key, https=True, verify=False)
 
 def build_session(customer_id: Optional[str] = None, phone: Optional[str] = None, customer_info: Optional[Dict[str, Any]] = None) -> MarketingSession:
     # 1. Mock Customer Data

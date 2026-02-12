@@ -13,7 +13,9 @@ else:
     print("Qdrant 연결 성공")
     _qdrant_client = QdrantClient(
         url=settings.QDRANT_URL,
-        api_key=settings.QDRANT_API_KEY
+        api_key=settings.QDRANT_API_KEY,
+        https=True,
+        verify=False  # SSL 인증서 검증 비활성화 (개발/내부망 환경 대응)
     )
 
 # 임베딩 모델 준비
