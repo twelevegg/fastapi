@@ -241,8 +241,17 @@ def run_generation(job_id: str) -> None:
 
     write_status(job_id, status="running", stage="initialize", progress=5, message="자료 로드/청킹 중")
 
-    cwd = os.getcwd()
+    cwd: Optional[str] = None
     try:
+        try:
+            cwd = os.getcwd()
+        except FileNotFoundError:
+            # Previous job cleanup can remove the process cwd.
+            # Recover by moving to project root before proceeding.
+            project_root = Path(__file__).resolve().parents[2]
+            os.chdir(project_root)
+            cwd = str(project_root)
+
         # keep pipeline outputs under the job folder
         os.chdir(jd)
 
@@ -268,10 +277,11 @@ def run_generation(job_id: str) -> None:
         write_status(job_id, status="failed", stage="error", progress=0, message=str(e))
         raise
     finally:
-        try:
-            os.chdir(cwd)
-        except Exception:
-            pass
+        if cwd:
+            try:
+                os.chdir(cwd)
+            except Exception:
+                pass
 
 def run_next_round(job_id: str) -> None:
     # Keep only this job folder in ./jobs
