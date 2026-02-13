@@ -247,7 +247,7 @@ async def retrieve_node(state: MarketingState, config: RunnableConfig):
         # Boost budget/saving keywords?
         weights = {"marketing": 1.6, "guideline": 1.0}
         
-    q_items = await session.qdrant.staged_category_search(
+    q_items = session.qdrant.staged_category_search(
         query=query, 
         final_k=8, 
         categories=cats, 
