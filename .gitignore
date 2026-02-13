@@ -230,3 +230,6 @@ marketing_architecture_diagram.html
 
 # jobs
 jobs/
+
+extract_pdf.py
+pdf_content.txt
