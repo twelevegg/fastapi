@@ -297,6 +297,52 @@ class QdrantSearchEngine:
                 cats.add(md["category"])
         return sorted(cats)
 
+    async def prefetch(self, trigger_chunk: str) -> None:
+        """
+        [Speculative Execution] 
+        Runs Qdrant search in background when a trigger is detected in a fragment.
+        """
+        print(f"[Session] Prefetching for trigger: '{trigger_chunk}'")
+        # Build a temporary query around the trigger
+        # In reality, we might want more context, but trigger itself is a strong signal
+        query = f"Prefetch: {trigger_chunk}"
+        # Execute search (simplified parameters for speed)
+        cats = ["marketing", "terms"]
+        q_items = await self.staged_category_search(query=trigger_chunk, final_k=5, categories=cats)
+        
+        # Store result
+        self._prefetch_cache = {
+            "query": trigger_chunk,
+            "items": q_items,
+            "timestamp": time.time()
+        }
+
+    def dialogue_text(self, last_n: int = 14) -> str:
+        part = self.turns[-last_n:] if last_n and len(self.turns) > last_n else self.turns
+        lines = []
+        for t in part:
+            role = "고객" if t.speaker == "customer" else "상담원"
+            txt = mask_pii(t.transcript or "")
+            if txt.strip():
+                lines.append(f"{role}: {txt}")
+        return "\n".join(lines).strip()
+
+    def build_query(self) -> str:
+        dialog = self.dialogue_text()
+        
+        # [Context Optimization] Extract Product Names from recent dialogue
+        # Specifically, check the LAST turn (Agent or Customer) for mentions of ANY known product.
+        recent_mentions = []
+        last_turn_text = ""
+        if self.turns:
+            # Check last 2 turns (User + Agent)
+            for t in self.turns[-2:]:
+                if t.transcript and isinstance(t.transcript, str):
+                   last_turn_text += " " + t.transcript
+
+        # Simple keyword extraction (just for query weighting)
+        return dialog[-400:] # Naive implementation
+
     def _filter(self, category: Optional[str]) -> Optional[models.Filter]:
         if not category:
             return None
@@ -319,14 +365,14 @@ class QdrantSearchEngine:
             )
         return out
 
-    def semantic(self, query: str, k: int = 6, category: Optional[str] = None) -> List[RetrievedItem]:
-        return self._to_items(self.vs_dense.similarity_search_with_score(query=query, k=k, filter=self._filter(category)))
+    async def semantic(self, query: str, k: int = 6, category: Optional[str] = None) -> List[RetrievedItem]:
+        return self._to_items(await self.vs_dense.asimilarity_search_with_score(query=query, k=k, filter=self._filter(category)))
 
-    def keyword(self, query: str, k: int = 6, category: Optional[str] = None) -> List[RetrievedItem]:
-        return self._to_items(self.vs_sparse.similarity_search_with_score(query=query, k=k, filter=self._filter(category)))
+    async def keyword(self, query: str, k: int = 6, category: Optional[str] = None) -> List[RetrievedItem]:
+        return self._to_items(await self.vs_sparse.asimilarity_search_with_score(query=query, k=k, filter=self._filter(category)))
 
-    def hybrid(self, query: str, k: int = 6, category: Optional[str] = None) -> List[RetrievedItem]:
-        return self._to_items(self.vs_hybrid.similarity_search_with_score(query=query, k=k, filter=self._filter(category)))
+    async def hybrid(self, query: str, k: int = 6, category: Optional[str] = None) -> List[RetrievedItem]:
+        return self._to_items(await self.vs_hybrid.asimilarity_search_with_score(query=query, k=k, filter=self._filter(category)))
 
     @staticmethod
     def _rrf(lists: List[List[RetrievedItem]], weights: List[float], final_k: int = 10, rrf_k: int = 60) -> List[RetrievedItem]:
@@ -352,13 +398,13 @@ class QdrantSearchEngine:
             out.append(RetrievedItem(doc_id=f"DOC{i}", score=it.score, page_content=it.page_content, metadata=it.metadata, category=it.category))
         return out
 
-    def fused_search(self, query: str, final_k: int = 10, k_each: int = 8, category: Optional[str] = None) -> List[RetrievedItem]:
-        sem = self.semantic(query, k=k_each, category=category)
-        kw = self.keyword(query, k=k_each, category=category)
-        hy = self.hybrid(query, k=k_each, category=category)
+    async def fused_search(self, query: str, final_k: int = 10, k_each: int = 8, category: Optional[str] = None) -> List[RetrievedItem]:
+        sem = await self.semantic(query, k=k_each, category=category)
+        kw = await self.keyword(query, k=k_each, category=category)
+        hy = await self.hybrid(query, k=k_each, category=category)
         return self._rrf([sem, kw, hy], [1.0, 1.0, 1.2], final_k=final_k)
 
-    def staged_category_search(
+    async def staged_category_search(
         self,
         query: str,
         final_k: int = 10,
@@ -373,12 +419,12 @@ class QdrantSearchEngine:
 
         cats = [c for c in categories if c in self.existing_categories]
         if not cats:
-            return self.fused_search(query, final_k=final_k, k_each=max(per_category_k, 6), category=None)
+            return await self.fused_search(query, final_k=final_k, k_each=max(per_category_k, 6), category=None)
 
         per = []
         ws = []
         for c in cats:
-            per.append(self.fused_search(query, final_k=per_category_k, k_each=per_category_k, category=c))
+            per.append(await self.fused_search(query, final_k=per_category_k, k_each=per_category_k, category=c))
             ws.append(float(cat_weights.get(c, 1.0)))
 
         merged = self._rrf(per, ws, final_k=max(final_k, sum(always_include.values())))
