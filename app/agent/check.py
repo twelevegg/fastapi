@@ -16,14 +16,31 @@ QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 
 # 2. 임베딩 모델 준비 (ingest.py와 동일해야 검색 가능)
 print("임베딩 모델을 로드 중입니다...")
-# [CHANGED] Use Shared Mock Store from Service
-from app.services.qdrant_service import get_vector_store
-vector_store = get_vector_store()
-print(f"Vector Store Loaded: {type(vector_store)}")
+dense_embeddings = FastEmbedEmbeddings(
+    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", 
+    normalize=True
+)
+sparse_embeddings = FastEmbedSparse(
+    model_name="Qdrant/bm25", 
+    sparse=True
+)
 
-# 3. Qdrant 클라이언트 및 VectorStore 연결 -> Legacy Code Removed
-# client = QdrantClient(...)
-# vector_store = QdrantVectorStore(...)
+# 3. Qdrant 클라이언트 및 VectorStore 연결
+client = QdrantClient(
+    url=QDRANT_URL,
+    api_key=QDRANT_API_KEY,
+)
+
+# LangChain VectorStore 래퍼 설정 (Hybrid 검색 모드)
+vector_store = QdrantVectorStore(
+    client=client,
+    collection_name=COLLECTION_NAME,
+    embedding=dense_embeddings,
+    sparse_embedding=sparse_embeddings,
+    retrieval_mode=RetrievalMode.HYBRID,
+    vector_name="dense",
+    sparse_vector_name="sparse",
+)
 
 # 4. LangGraph 설정
 

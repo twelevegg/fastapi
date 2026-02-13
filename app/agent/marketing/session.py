@@ -17,9 +17,6 @@ from langchain_core.documents import Document
 from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
 from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 
-# [MEMORY FIX] Import shared Mock Store
-from app.services.qdrant_service import get_vector_store, MockQdrantVectorStore
-
 from app.agent.marketing.prompts import (
     BASE_SYSTEM, STRATEGY_UPSELL, STRATEGY_RETENTION, STRATEGY_DEFAULT
 )
@@ -245,26 +242,6 @@ class QdrantSearchEngine:
         self.vector_name = vector_name
         self.sparse_vector_name = sparse_vector_name
         self.category_key = category_key
-
-        self.category_key = category_key
-
-        # [MEMORY & DATA INTEGRITY FIX] Check if we are in Mock Mode via Service
-        # If qdrant_service is using Mock, we MUST use it too (for T3.Small survival + KT Data)
-        shared_store = get_vector_store()
-        
-        if isinstance(shared_store, MockQdrantVectorStore):
-            print("[QdrantSearchEngine] Detected Mock Mode. Using Shared Mock Store (0MB Memory).")
-            self.vs_dense = shared_store
-            self.vs_sparse = shared_store
-            self.vs_hybrid = shared_store
-            
-            # Skip Model Loading
-            self.dense_embeddings = None
-            self.sparse_embeddings = None
-            
-            # Mock Categories
-            self.existing_categories = ["marketing", "guideline", "terms", "principle"]
-            return
 
         self.dense_embeddings = FastEmbedEmbeddings(
             model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
@@ -924,13 +901,6 @@ class MarketingSession:
 def build_qdrant_client_from_env() -> QdrantClient:
     url = os.environ.get("QDRANT_URL")
     key = os.environ.get("QDRANT_API_KEY")
-    
-    # [FIX] If Mock Mode, allow missing envs
-    if isinstance(get_vector_store(), MockQdrantVectorStore):
-        if not url or not key:
-            print("[Session] Mock Mode Active: Skipping Qdrant Connection Check")
-            return None # Type ignore
-
     if not url or not key:
         raise RuntimeError("QDRANT_URL/QDRANT_API_KEY env not set")
     return QdrantClient(url=url, api_key=key, https=True, verify=False)
@@ -952,11 +922,9 @@ def build_session(customer_id: Optional[str] = None, phone: Optional[str] = None
     client = build_qdrant_client_from_env()
 
     # verify collection exists (read-only)
-    # [FIX] Skip collection check if Mock Mode
-    if not isinstance(get_vector_store(), MockQdrantVectorStore):
-        cols = [c.name for c in client.get_collections().collections]
-        if "cs_guideline" not in cols:
-            raise RuntimeError(f"Qdrant collection missing: cs_guideline (found={cols})")
+    cols = [c.name for c in client.get_collections().collections]
+    if "cs_guideline" not in cols:
+        raise RuntimeError(f"Qdrant collection missing: cs_guideline (found={cols})")
 
     qengine = QdrantSearchEngine(client=client, collection="cs_guideline", vector_name="dense", sparse_vector_name="sparse", category_key="metadata.category")
 
