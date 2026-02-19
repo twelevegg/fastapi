@@ -1,4 +1,4 @@
-# AIVLE School Final Project: AI CS Training Platform
+# AI CS Training Platform
 **(AI 기반 고객 응대 교육 및 시뮬레이션 플랫폼)**
 
 본 프로젝트는 신입 상담사 및 재직자를 위한 **AI 기반 통합 교육 및 훈련 플랫폼**입니다.
