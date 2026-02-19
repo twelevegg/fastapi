@@ -4,6 +4,7 @@ from app.core.config import settings
 
 # Ensure environment variables are set for legacy modules depending on os.environ
 import os
+
 if settings.QDRANT_URL:
     os.environ["QDRANT_URL"] = settings.QDRANT_URL
 if settings.QDRANT_API_KEY:
@@ -26,7 +27,7 @@ if settings.LLM_MODEL:
 # If keys are missing in Settings class, they are ignored.
 # Let's verify config.py content first to see if LLM_BASE_URL is there.
 # If not, I should add them to Settings or read raw os.environ after load_dotenv.
-# Since I can't easily change Settings without import errors, I will trust that load_dotenv works if I call it, 
+# Since I can't easily change Settings without import errors, I will trust that load_dotenv works if I call it,
 # OR I can just hardcode the injection if I see them in the .env file view.
 
 # Actually, I'll just check if they exist in valid env var locations or inject defaults.
@@ -38,7 +39,7 @@ if settings.LLM_MODEL:
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
 )
 
 # CORS 임시 설정
@@ -55,6 +56,18 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+
+@app.on_event("startup")
+async def preload_marketing_resources():
+    try:
+        from app.agent.marketing.session import get_shared_qdrant_engine
+
+        get_shared_qdrant_engine()
+        print("[Startup] Marketing Qdrant/embedding resources loaded")
+    except Exception as e:
+        print(f"[Startup] Marketing preload failed: {e}")
+
 
 @app.get("/")
 async def root():
