@@ -39,15 +39,15 @@ class QAReportRequest(BaseModel):
 
 # ---------- Overall QA ----------
 class OverallCategoryScores(BaseModel):
-    problem_understanding: int = Field(ge=1, le=5)
-    explanation_clarity: int = Field(ge=1, le=5)
-    tone_and_attitude: int = Field(ge=1, le=5)
-    flow_control: int = Field(ge=1, le=5)
-    closing: int = Field(ge=1, le=5)
+    problem_understanding: int = Field(ge=0, le=5)
+    explanation_clarity: int = Field(ge=0, le=5)
+    tone_and_attitude: int = Field(ge=0, le=5)
+    flow_control: int = Field(ge=0, le=5)
+    closing: int = Field(ge=0, le=5)
 
 
 class OverallQAResult(BaseModel):
-    overall_score: int = Field(ge=1, le=5)
+    overall_score: int = Field(ge=0, le=5)
     category_scores: OverallCategoryScores
     strengths: list[str]
     weaknesses: list[str]
