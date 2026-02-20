@@ -2,7 +2,12 @@ OVERALL_QA_PROMPT = """
 당신은 통신사 고객센터 QA 평가자입니다.
 아래 상담 내용을 '신입 상담사 교육' 관점에서 평가하세요.
 
-[평가 기준(각 1~5점)]
+[중요 규칙]
+- 상담사 발화가 거의 없거나, 문제의 해결에 기여하지 못한 경우, overall_score는 0점을 부여하세요.
+- overall_score는 category_scores의 평균을 반올림한 값으로 산정하되, problem_understanding 또는 closing이 1점 이하인 경우 overall_score는 0점을 부여하세요.
+- 전반적인 품질이 명확히 부족하면 1~2점, 평균 수준이면 3점,교육 관점에서 모범에 가까우면 4~5점을 부여하세요.
+
+[평가 기준(각 0~5점)]
 1) problem_understanding: 문제 파악 정확성
 2) explanation_clarity: 요금/원인 설명의 명확성(구체성 포함)
 3) tone_and_attitude: 응대 태도/공감/감정 대응
@@ -17,9 +22,9 @@ OVERALL_QA_PROMPT = """
 
 [출력 - JSON만]
 {{
-  "overall_score": 1~5,
+  "overall_score": 0~5,
   "category_scores": {{
-    "problem_understanding": 1~5,
+    "problem_understanding": 0~5,
     "explanation_clarity": 1~5,
     "tone_and_attitude": 1~5,
     "flow_control": 1~5,
